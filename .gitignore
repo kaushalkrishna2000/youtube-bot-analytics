@@ -1,0 +1,93 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & type checking
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# --- Secrets & credentials (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Google / YouTube API
+src/credentials/*
+!src/credentials/.env.example
+**/client_secret*.json
+**/token.json
+**/token.pickle
+**/cred*.json
+service_account*.json
+
+# --- IDE & editors ---
+.idea/
+!.idea/runConfigurations/
+.vscode/
+*.code-workspace
+.cursor/
+.junie
+
+# PyCharm local / user-specific (if you keep partial .idea in repo)
+.idea/workspace.xml
+.idea/shelf/
+.idea/httpRequests/
+.idea/dataSources/
+.idea/dataSources.local.xml
+
+# --- OS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Logs & local data ---
+*.log
+logs/
+output/
+data/
+*.csv
+*.sqlite
+*.db
+
+# --- Jupyter (if used) ---
+.ipynb_checkpoints/
