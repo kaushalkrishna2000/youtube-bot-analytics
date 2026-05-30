@@ -1,4 +1,4 @@
-"""Domain exceptions raised by services and handled in pipeline/batch."""
+"""Domain exceptions raised by services and handled in logic/report and logic/batch."""
 
 
 class ChannelNotFoundError(Exception):

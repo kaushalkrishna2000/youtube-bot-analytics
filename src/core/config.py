@@ -12,8 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-_API_DIR = Path(__file__).resolve().parent
-_SRC_ROOT = _API_DIR.parent
+_CORE_DIR = Path(__file__).resolve().parent
+_SRC_ROOT = _CORE_DIR.parent
 _CREDENTIALS_DIR = _SRC_ROOT / "credentials"
 _ENV_FILE = _CREDENTIALS_DIR / ".env"
 

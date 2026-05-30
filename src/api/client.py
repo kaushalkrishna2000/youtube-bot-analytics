@@ -26,7 +26,7 @@ from typing import Any
 
 from googleapiclient.discovery import build
 
-from api.config import load_api_key
+from core.config import load_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +48,7 @@ class YouTubeClient:
         return self._service
 
     def _build_service(self, api_key: str) -> Any:
-        return build(
-            YOUTUBE_API_SERVICE_NAME,
-            YOUTUBE_API_VERSION,
-            developerKey=api_key,
-            cache_discovery=False,
-        )
+        return build(YOUTUBE_API_SERVICE_NAME,YOUTUBE_API_VERSION,developerKey=api_key,cache_discovery=False)
 
     def call(self, request: Any, delay_ms: int = 0) -> dict[str, Any]:
         """

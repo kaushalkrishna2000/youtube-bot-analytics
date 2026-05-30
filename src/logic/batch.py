@@ -11,9 +11,9 @@ import csv
 import logging
 from pathlib import Path
 
-from api import YouTubeClient
-from models import ChannelReport
-from pipeline import build_full_report
+from api.client import YouTubeClient
+from models.records import ChannelReport
+from logic.report import build_full_report
 
 logger = logging.getLogger(__name__)
 

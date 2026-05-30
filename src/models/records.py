@@ -2,7 +2,7 @@
 Domain dataclasses for one channel run.
 
 ChannelReport is the unit exported to JSON/CSV. CommentRecord starts with
-enrichment_status='pending' or 'no_channel' and is updated in comment_service.
+enrichment_status='pending' or 'no_channel' and is updated in services.comment.
 """
 
 from __future__ import annotations

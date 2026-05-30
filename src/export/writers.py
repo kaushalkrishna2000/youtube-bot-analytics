@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-from models import ChannelReport, CommentRecord
+from models.records import ChannelReport, CommentRecord
 
 logger = logging.getLogger(__name__)
 

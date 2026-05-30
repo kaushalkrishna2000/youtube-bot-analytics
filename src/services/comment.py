@@ -11,14 +11,16 @@ import logging
 
 from googleapiclient.errors import HttpError
 
-from api import YouTubeClient
-from api.config import CHANNELS_BATCH_SIZE, MAX_COMMENTS_CAP
-from models import CommentRecord, CommentsDisabledError
+from api.client import YouTubeClient
+from core.config import CHANNELS_BATCH_SIZE, MAX_COMMENTS_CAP
+from models.exceptions import CommentsDisabledError
+from models.records import CommentRecord
 
 logger = logging.getLogger(__name__)
 
+
 def fetch_top_level_comments(client: YouTubeClient, video_id: str, *, max_comments: int = 100, delay_ms: int = 0) -> list[CommentRecord]:
-    """Fetch top-level comment threads for a video."""
+    """Fetch top-level comment threads and map each thread into CommentRecord."""
     limit = min(max(max_comments, 1), MAX_COMMENTS_CAP)
     logger.info("Fetching up to %s top-level comments for video %s", limit, video_id)
 
@@ -32,20 +34,21 @@ def fetch_top_level_comments(client: YouTubeClient, video_id: str, *, max_commen
 
     records: list[CommentRecord] = []
     for item in response.get("items", []):
+        # topLevelComment.snippet holds the flat fields used by comments.csv.
         top = item.get("snippet", {}).get("topLevelComment", {})
         top_snippet = top.get("snippet", {})
         author_channel_id = _normalize_author_channel_id(top_snippet.get("authorChannelId"))
-        consumer_record_object=CommentRecord(
-                comment_id=top.get("id", ""),
-                comment_text=top_snippet.get("textDisplay", ""),
-                comment_published_at=top_snippet.get("publishedAt", ""),
-                author_display_name=top_snippet.get("authorDisplayName", ""),
-                author_channel_id=author_channel_id,
-                like_count=int(top_snippet.get("likeCount", 0)),
-                # Google-linked channels get enriched later; others stay no_channel.
-                enrichment_status="no_channel" if not author_channel_id else "pending",
-            )
-        records.append(consumer_record_object)
+        # pending means "look up this author later"; no_channel has nothing to enrich.
+        record = CommentRecord(
+            comment_id=top.get("id", ""),
+            comment_text=top_snippet.get("textDisplay", ""),
+            comment_published_at=top_snippet.get("publishedAt", ""),
+            author_display_name=top_snippet.get("authorDisplayName", ""),
+            author_channel_id=author_channel_id,
+            like_count=int(top_snippet.get("likeCount", 0)),
+            enrichment_status="no_channel" if not author_channel_id else "pending",
+        )
+        records.append(record)
     logger.info("Fetched %s comment(s)", len(records))
     logger.debug("commentThreads.list returned %s item(s)", len(response.get("items", [])))
     return records
@@ -53,7 +56,7 @@ def fetch_top_level_comments(client: YouTubeClient, video_id: str, *, max_commen
 
 def enrich_commenter_channels(client: YouTubeClient, comments: list[CommentRecord], *, delay_ms: int = 0) -> list[CommentRecord]:
     """Batch-fetch channel metadata for unique commenter channel IDs."""
-    # One channels.list call per batch of up to 50 unique commenter IDs (quota-efficient).
+    # Deduplicate before channels.list so repeated commenters cost one lookup.
     unique_ids = {c.author_channel_id for c in comments if c.author_channel_id}
     if not unique_ids:
         logger.info("No commenter channel IDs to enrich")
@@ -69,12 +72,13 @@ def enrich_commenter_channels(client: YouTubeClient, comments: list[CommentRecor
         ids_param = ",".join(batch)
         batch_num = start // CHANNELS_BATCH_SIZE + 1
         logger.debug("Enrichment batch %s/%s (%s channel(s))", batch_num, batch_count, len(batch))
-        # id= accepts comma-separated channel IDs (up to 50 per request).
+        # id= accepts up to 50 comma-separated channel IDs per channels.list call.
         enrich_request = client.service.channels().list(part="snippet", id=ids_param)
         response = client.call(enrich_request, delay_ms=delay_ms)
         items = response.get("items", [])
         logger.debug("channels.list returned %s item(s)", len(items))
         for item in items:
+            # Store snippets by channel ID so we can map enrichment back to comments.
             channel_map[item["id"]] = item.get("snippet", {})
 
     for comment in comments:
@@ -89,6 +93,7 @@ def enrich_commenter_channels(client: YouTubeClient, comments: list[CommentRecor
             comment.enrichment_status = "not_found"
             continue
 
+        # Enriched author fields support bot-review filters in JSON/CSV exports.
         comment.author_channel_title = snippet.get("title")
         comment.author_channel_created_at = snippet.get("publishedAt")
         comment.author_channel_custom_url = snippet.get("customUrl")
@@ -98,7 +103,7 @@ def enrich_commenter_channels(client: YouTubeClient, comments: list[CommentRecor
 
 
 def _normalize_author_channel_id(raw: object) -> str | None:
-    """YouTube returns authorChannelId as a string or as {\"value\": \"UC...\"}."""
+    """Normalize authorChannelId from either a string or {\"value\": \"UC...\"}."""
     if raw is None:
         return None
     if isinstance(raw, str):
@@ -110,6 +115,7 @@ def _normalize_author_channel_id(raw: object) -> str | None:
             stripped = value.strip()
             return stripped or None
     return None
+
 
 def _is_comments_disabled(error: HttpError) -> bool:
     """YouTube returns 403 with reason commentsDisabled when threads are turned off."""
@@ -124,4 +130,3 @@ def _is_comments_disabled(error: HttpError) -> bool:
         pass
     body = str(error).lower()
     return "commentsdisabled" in body or "disabledcomments" in body
-

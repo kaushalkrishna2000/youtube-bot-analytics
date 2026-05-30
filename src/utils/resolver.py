@@ -11,8 +11,8 @@ import logging
 import re
 from urllib.parse import urlparse
 
-from api import YouTubeClient
-from models import ChannelNotFoundError
+from api.client import YouTubeClient
+from models.exceptions import ChannelNotFoundError
 
 logger = logging.getLogger(__name__)
 

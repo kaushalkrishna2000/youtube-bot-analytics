@@ -2,7 +2,7 @@
 """
 CLI entry point for YouTube Bot Analytics.
 
-Wires argparse, logging, and export. All YouTube logic lives in pipeline/services;
+Wires argparse, logging, and export. YouTube logic lives in logic/services;
 this module only parses flags, builds YouTubeClient, and dispatches single vs batch.
 """
 
@@ -13,17 +13,18 @@ import logging
 import sys
 from pathlib import Path
 
-# Imports use `api`, `pipeline`, etc. — add src/ to path when run as a script.
+# Imports use top-level packages under src/ when this file is run as a script.
 _SRC_DIR = Path(__file__).resolve().parent
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from api import YouTubeClient
-from api.config import MAX_COMMENTS_CAP, get_request_delay_ms
-from batch import load_channel_inputs, run_batch
-from export import export_batch, export_single, resolve_output_dir
-from logging_config import configure_logging
-from pipeline import build_full_report
+from api.client import YouTubeClient
+from core.config import MAX_COMMENTS_CAP, get_request_delay_ms
+from logic.batch import load_channel_inputs, run_batch
+from export.writers import export_batch, export_single
+from export.paths import resolve_output_dir
+from core.logging import configure_logging
+from logic.report import build_full_report
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +34,7 @@ def _parse_args() -> argparse.Namespace:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--channel", help="Channel URL, @handle, or UC... channel ID")
     group.add_argument("--batch", metavar="FILE", help="Path to .txt or .csv file with channel inputs")
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="Write exports here (default: <project>/output/<YYYY-MM-DD_HHMMSS>/)",
-    )
+    parser.add_argument("--output-dir",type=Path,default=None,metavar="PATH",help="Write exports here (default: <project>/output/<YYYY-MM-DD_HHMMSS>/)",)
     parser.add_argument("--format", choices=("json", "csv", "both"), default="both", help="Output format (default: both)")
     parser.add_argument("--max-comments", type=int, default=100, help=f"Max top-level comments per video (default: 100, cap: {MAX_COMMENTS_CAP})")
     parser.add_argument("--no-comments", action="store_true", help="Skip comment fetching and enrichment")
@@ -78,14 +73,7 @@ def _print_report_summary(report, *, quiet: bool) -> None:
     print(f"Comments: {report.comments_fetched} ({report.comments_status})")
 
 
-def _log_run_config(
-    args: argparse.Namespace,
-    *,
-    delay_ms: int,
-    include_comments: bool,
-    max_comments: int,
-    output_dir: Path,
-) -> None:
+def _log_run_config(args: argparse.Namespace,*,delay_ms: int,include_comments: bool,max_comments: int,output_dir: Path,) -> None:
     logger.info("Config: output_dir=%s format=%s max_comments=%s include_comments=%s delay_ms=%s", output_dir, args.format, max_comments, include_comments, delay_ms)
 
 

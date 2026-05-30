@@ -1,5 +1,5 @@
 """
-Single-channel pipeline: metadata → optional comments → enrichment.
+Single-channel logic: metadata → optional comments → enrichment.
 
 This is the main hook for extending behavior (extra videos, scoring, etc.).
 Catches ChannelNotFoundError and CommentsDisabledError without aborting batch runs.
@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import logging
 
-from api import YouTubeClient
-from api.config import MAX_COMMENTS_CAP
-from models import ChannelNotFoundError, ChannelReport, CommentsDisabledError
-from services import enrich_commenter_channels, fetch_top_level_comments, get_channel_report
+from api.client import YouTubeClient
+from core.config import MAX_COMMENTS_CAP
+from models.exceptions import ChannelNotFoundError, CommentsDisabledError
+from models.records import ChannelReport
+from services.channel import get_channel_report
+from services.comment import enrich_commenter_channels, fetch_top_level_comments
 
 logger = logging.getLogger(__name__)
 
