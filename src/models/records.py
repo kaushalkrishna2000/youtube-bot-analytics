@@ -1,8 +1,7 @@
 """
-Domain dataclasses for one channel run.
+Domain dataclasses for channel/video fetch runs.
 
-ChannelReport is the unit exported to JSON/CSV. CommentRecord starts with
-enrichment_status='pending' or 'no_channel' and is updated in services.comment.
+Channel-mode reports are multi-video. Video-mode reports hold one video context.
 """
 
 from __future__ import annotations
@@ -10,19 +9,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-# Per-comment: whether we loaded the commenter's channel snippet.
 EnrichmentStatus = Literal["ok", "no_channel", "not_found", "pending"]
-# Per-report: outcome of the comment-fetch phase for the latest video.
-CommentsStatus = Literal["ok", "disabled", "none", "skipped", "no_video"]
-
-
-@dataclass(frozen=True)
-class VideoSummary:
-    """Latest upload on the target channel (from uploads playlist, maxResults=1)."""
-
-    video_id: str
-    title: str
-    published_at: str
+CommentsStatus = Literal["ok", "disabled", "none", "skipped", "no_video", "partial", "error"]
 
 
 @dataclass
@@ -44,9 +32,38 @@ class CommentRecord:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class VideoSummary:
+    """Video metadata used in channel/video mode reports."""
+
+    video_id: str
+    title: str
+    published_at: str
+
+
+@dataclass
+class VideoReport:
+    """One video analysis result with comment fetch outcome."""
+
+    video: VideoSummary
+    comments: list[CommentRecord] = field(default_factory=list)
+    comments_fetched: int = 0
+    comments_status: CommentsStatus = "none"
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "video": asdict(self.video),
+            "comments_fetched": self.comments_fetched,
+            "comments_status": self.comments_status,
+            "comments": [c.to_dict() for c in self.comments],
+            "error": self.error,
+        }
+
+
 @dataclass
 class ChannelReport:
-    """Aggregated result for a single channel input (success or partial failure)."""
+    """Aggregated result for one channel input (single or batch item)."""
 
     input_raw: str
     channel_id: str | None = None
@@ -55,18 +72,11 @@ class ChannelReport:
     channel_created_at: str | None = None
     subscriber_count: int | None = None
     video_count: int | None = None
-    latest_video: VideoSummary | None = None
-    comments: list[CommentRecord] = field(default_factory=list)
-    comments_fetched: int = 0
-    comments_status: CommentsStatus = "none"
+    videos: list[VideoReport] = field(default_factory=list)
     error: str | None = None
 
-    @property
-    def latest_video_id(self) -> str | None:
-        return self.latest_video.video_id if self.latest_video else None
-
     def to_dict(self) -> dict[str, Any]:
-        data: dict[str, Any] = {
+        return {
             "input_raw": self.input_raw,
             "channel_id": self.channel_id,
             "title": self.title,
@@ -74,10 +84,28 @@ class ChannelReport:
             "channel_created_at": self.channel_created_at,
             "subscriber_count": self.subscriber_count,
             "video_count": self.video_count,
-            "latest_video": asdict(self.latest_video) if self.latest_video else None,
+            "videos": [v.to_dict() for v in self.videos],
+            "error": self.error,
+        }
+
+
+@dataclass
+class VideoFetchReport:
+    """Top-level output for fetch video mode."""
+
+    input_video_id: str
+    video: VideoSummary | None = None
+    comments: list[CommentRecord] = field(default_factory=list)
+    comments_fetched: int = 0
+    comments_status: CommentsStatus = "none"
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "input_video_id": self.input_video_id,
+            "video": asdict(self.video) if self.video else None,
             "comments_fetched": self.comments_fetched,
             "comments_status": self.comments_status,
             "comments": [c.to_dict() for c in self.comments],
             "error": self.error,
         }
-        return data

@@ -1,297 +1,324 @@
 # YouTube Bot Analytics
 
-A powerful CLI tool to identify potential bot activity on YouTube. By analyzing channel metadata, latest video comments, and enriching commenter profiles, this tool helps you spot patterns typical of automated accounts.
+A JSON-first CLI fetcher for analyzing YouTube channels/videos, extracting comment activity, and enriching commenter channel metadata for bot-pattern review.
 
-## Features
+## 1) What This Tool Does
 
-- **Channel Resolution**: Automatically handles @handles, URLs, and channel IDs.
-- **Metadata Extraction**: Fetches subscriber counts, video counts, and account creation dates.
-- **Comment Analysis**: Pulls top-level comments from the latest video.
-- **Profile Enrichment**: Fetches channel data for every commenter to identify throwaway accounts.
-- **Batch Processing**: Analyze multiple channels from a CSV or text file.
-- **Flexible Export**: Save results in JSON, CSV, or both.
+This project fetches structured data from YouTube Data API v3 and writes it as JSON for downstream analysis.
 
-## Getting Started
+Core capabilities:
+- Resolve channels from `@handle`, full URL, or canonical `UC...` channel ID.
+- Fetch latest **N** videos for a channel (default `10`).
+- Fetch top-level comments per video with pagination (default limit `1000`).
+- Enrich each commenter with channel metadata (title, custom URL, channel creation timestamp).
+- Support single-channel, batch-channel, and single-video workflows.
+- Export JSON files to deterministic folder layouts.
 
-### Prerequisites
+## 2) Runtime Requirements
 
-- Python 3.10 or higher
-- A [YouTube Data API v3 key](https://console.cloud.google.com/apis/library/youtube.googleapis.com)
+- Python 3.10+
+- YouTube Data API key
+- Dependencies from `requirements.txt`
+- API key file at: `src/credentials/.env`
 
-### Installation
+Example `.env`:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/your-repo/youtube-bot-analytics.git
-   cd youtube-bot-analytics
-   ```
+```ini
+YOUTUBE_API_KEY=your_api_key_here
+# Optional:
+# YOUTUBE_REQUEST_DELAY_MS=150
+```
 
-2. **Create a virtual environment**:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+## 3) CLI Modes and Commands
 
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### Configuration
-
-1. **Set up credentials**:
-   ```bash
-   mkdir -p src/credentials
-   cp src/credentials/.env.example src/credentials/.env
-   ```
-
-2. **Add your API key**:
-   Open `src/credentials/.env` and add your YouTube API key:
-   ```ini
-   YOUTUBE_API_KEY=your_actual_api_key_here
-   ```
-
-## Usage
-
-The tool operates in two primary modes: **Single Channel** and **Batch Mode**.
-
-### Single Channel Mode
-
-Provide a single identifier (URL, @handle, or ID) using the `--channel` flag:
+Entry point:
 
 ```bash
-# Using @handle
-python src/main.py --channel @MrBeast
-
-# Using full URL
-python src/main.py --channel https://www.youtube.com/@MrBeast
-
-# Using canonical Channel ID
-python src/main.py --channel UCX6OQ3DkcsbYNE6H8uQQuVA
+python src/main.py fetch ...
 ```
 
-### Batch Mode
+### A) Channel Single
 
-Process multiple channels by providing a file path with the `--batch` flag:
+Analyze one channel:
 
 ```bash
-python src/main.py --batch channels.txt
+python src/main.py fetch channel single --channel @HombaleFilms
 ```
 
-#### Supported File Formats
+Options:
+- `--max-videos` (default `10`)
+- `--max-comments` (default `1000`)
 
-- **Plain Text (`.txt`)**: One identifier per line. Lines starting with `#` are ignored.
-  ```text
-  @MrBeast
-  https://www.youtube.com/@PewDiePie
-  # This is a comment
-  UCX6OQ3DkcsbYNE6H8uQQuVA
-  ```
+### B) Channel Batch
 
-- **CSV (`.csv`)**: Must contain a header row. The tool looks for columns named `channel`, `url`, `handle`, `channel_url`, or `channel_id`.
-  ```csv
-  channel
-  @MrBeast
-  @PewDiePie
-  ```
-
-### CLI Options Reference
-
-| Option | Default | Description |
-|:-------|:--------|:------------|
-| `--channel ID` | - | Single channel identifier (URL, @handle, or ID). |
-| `--batch FILE` | - | Path to a `.txt` or `.csv` file for batch processing. |
-| `--output-dir PATH`| `output/<timestamp>/` | Directory where results will be saved. |
-| `--format FMT` | `both` | Output format: `json`, `csv`, or `both`. |
-| `--max-comments N` | `100` | Max top-level comments to fetch (API limit is 100). |
-| `--no-comments` | `False` | Skip comment fetching and profile enrichment. |
-| `--delay-ms N` | `150` | Milliseconds to wait between API calls. |
-| `--quiet` | `False` | Suppress all logs except errors. |
-| `--debug` | `False` | Enable detailed debug logging (includes API timing). |
-
-### Logging
-
-Flow logs are written to `stderr` by default, while the summary report is printed to `stdout`.
+Analyze many channels from `.txt` or `.csv`:
 
 ```bash
-# Standard run (INFO logs on stderr, summary on stdout)
-python src/main.py --channel @MrBeast
-
-# Quiet mode (only errors)
-python src/main.py --channel @MrBeast --quiet
-
-# Debug mode (detailed API telemetry)
-python src/main.py --channel @MrBeast --debug
+python src/main.py fetch channel batch --batch channels.txt
 ```
 
-## Understanding Output
+Options:
+- `--max-videos` (default `10`)
+- `--max-comments` (default `1000`)
 
-Results are stored in timestamped directories within the `output/` folder by default.
+### C) Video Mode
 
-### Directory Structure
+Analyze one specific video:
 
-```text
-output/
-└── 2026-05-24_153045/         # Run timestamp
-    ├── channel_report.json    # Full data (Single mode) or reports.json (Batch)
-    └── comments.csv           # Flat list (Single mode) or all_comments.csv (Batch)
+```bash
+python src/main.py fetch video --video-id dQw4w9WgXcQ
 ```
 
-### Status Definitions
+Options:
+- `--max-comments` (default `1000`)
 
-The tool uses status fields to explain why data might be missing:
+### Global Flags
 
-| Field | Status | Meaning |
-|:------|:-------|:--------|
-| **`comments_status`** | `ok` | Comments were successfully fetched. |
-| | `none` | No comments were found on the video. |
-| | `disabled` | Comments are disabled for this video. |
-| | `skipped` | Comment fetching was skipped via `--no-comments`. |
-| | `no_video` | No videos were found for this channel. |
-| **`enrichment_status`**| `ok` | Commenter's channel metadata was successfully loaded. |
-| | `no_channel` | Commenter has no linked YouTube channel. |
-| | `not_found` | Commenter's channel exists but returned no metadata. |
-| | `pending` | Enrichment step has not yet run for this record. |
+- `--output-dir PATH` Override export base folder (default is `fetch_export/` under project root)
+- `--delay-ms N` Delay between API calls
+- `--no-comments` Skip comments + commenter enrichment
+- `--quiet` Suppress flow logs (errors only) and summary prints
+- `--debug` Most detailed logs (higher priority than quiet)
+- `-v/--verbose` Explicit alias for default INFO logging
 
-### Bot-Detection Signals (Manual Review)
+## 4) Logging Behavior and Precedence
 
-While this tool doesn't automatically flag bots, you can use these signals in the exported CSV to prioritize your review:
+Default behavior is **verbose** (INFO-level flow logs).
 
-1. **`no_channel` Status**: Accounts without a linked channel are often used for bulk spam.
-2. **New Accounts**: Compare `author_channel_created_at` with `comment_published_at`. Accounts created just hours or days before commenting are suspicious.
-3. **Missing Metadata**: `enrichment_status = not_found` often indicates accounts that were deleted or hidden shortly after commenting.
-4. **Pattern Analysis**: Look for identical comment text from different authors in the `comment_text` column.
+Precedence:
+- `--debug` (highest)
+- default INFO (when no `--quiet`)
+- `--quiet` (errors only)
 
-## Developer Guide
+Practical meaning:
+- Normal run: you see progress across resolve → video fetch → comments pages → enrichment → export.
+- Quiet run: only failures/errors.
+- Debug run: API timing and lower-level diagnostics.
 
-### Architecture & Design
-
-#### System Flow
+## 5) End-to-End Flow
 
 ```mermaid
 flowchart TD
-    A([Start]) --> B{Single or Batch?}
+    A[CLI parse] --> B[Configure logging]
+    B --> C[Build YouTubeClient]
+    C --> D{Mode}
 
-    B -->|--channel| C[Single channel input\nURL / @handle / UC... ID]
-    B -->|--batch| D[Load .txt or .csv file\nwith channel list]
+    D -->|channel single| E[Resolve channel input]
+    D -->|channel batch| F[Load inputs from txt/csv]
+    D -->|video| G[Load video metadata]
 
-    D --> E[Parse each line/row\ninto channel inputs]
-    E --> F[Loop over inputs]
-    C --> G
+    F --> E
+    E --> H[Fetch channel metadata]
+    H --> I[Fetch latest N upload video IDs via playlist pagination]
+    I --> J[Hydrate video snippet metadata]
 
-    F --> G[Resolve to canonical\nchannel ID via API]
+    J --> K{--no-comments?}
+    K -->|yes| L[Mark per-video status skipped]
+    K -->|no| M[Fetch top comments via commentThreads pagination]
 
-    G -->|Not found| ERR1[ChannelNotFoundError\n→ record error, continue]
-    G -->|Resolved| H[Fetch channel metadata\ntitle · subscribers · video count\ncreation date · custom URL]
+    M --> N[Deduplicate commenter channel IDs]
+    N --> O[Enrich commenters via channels.list batches of 50]
+    O --> P[Build ChannelReport with videos]
+    L --> P
 
-    H --> I[Fetch latest video\nvideo_id · title · published_at]
+    G --> Q[Fetch top comments via pagination]
+    Q --> R[Enrich commenters]
+    R --> S[Build VideoFetchReport]
 
-    I --> J{--no-comments?}
-
-    J -->|Yes| K[comments_status = skipped]
-    J -->|No| L{Latest video found?}
-
-    L -->|No| M[comments_status = no_video]
-    L -->|Yes| N[Fetch top-level comments\nup to --max-comments]
-
-    N -->|Comments disabled| O[comments_status = disabled]
-    N -->|OK| P[For each commenter\nfetch their channel metadata\nin batches of 50]
-
-    P --> Q{Commenter has\na channel?}
-    Q -->|Yes| R[enrichment_status = ok\nauthor_channel_title\nauthor_channel_created_at\nauthor_channel_custom_url]
-    Q -->|No channel linked| S[enrichment_status = no_channel]
-    Q -->|Channel not found| T[enrichment_status = not_found]
-
-    R & S & T --> U[Build ChannelReport]
-    K & M & O --> U
-
-    U --> V{--format?}
-
-    V -->|json or both| W[Write channel_report.json\nor reports.json]
-    V -->|csv or both| X[Write comments.csv\nor all_comments.csv]
-
-    W & X --> Y([Done])
-
-    ERR1 --> F
+    P --> T[Write JSON export]
+    S --> T
 ```
 
-#### Layered Architecture
+## 6) Data Flow by Mode
 
-The codebase follows a strict downward dependency flow.
+### Channel Single
+1. Resolve channel input to channel ID.
+2. Fetch channel snippet/statistics metadata.
+3. Fetch latest `max_videos` from uploads playlist (paged).
+4. For each video:
+   - fetch comments (paged, up to `max_comments`)
+   - enrich commenter channels in batches of 50
+5. Write **one JSON file** for this channel.
 
-```mermaid
-graph TD
-    Main[main.py] --> LogicB[logic/batch.py]
-    Main --> LogicR[logic/report.py]
-    Main --> CoreL[core/logging.py]
-    Main --> CoreC[core/config.py]
-    LogicB --> LogicR
-    LogicR --> ServicesCh[services/channel.py]
-    LogicR --> ServicesCo[services/comment.py]
-    LogicR --> ModelsR[models/records.py]
-    LogicR --> ModelsE[models/exceptions.py]
-    ServicesCh --> Utils[utils/resolver.py]
-    ServicesCh --> API[api/client.py]
-    ServicesCh --> ModelsR
-    ServicesCo --> API
-    ServicesCo --> ModelsR
-    ServicesCo --> ModelsE
-    Utils --> API
-    Utils --> ModelsE
-    API --> CoreC
-```
+### Channel Batch
+1. Parse channel inputs from `.txt` or `.csv`.
+2. Run channel flow above per input.
+3. Write one JSON file per channel under timestamped batch folder.
 
-### Data Model
+### Video
+1. Fetch video metadata for `video_id`.
+2. Fetch comments (paged up to `max_comments`).
+3. Enrich commenters.
+4. Write one JSON file for that video.
 
-```mermaid
-erDiagram
-    ChannelReport ||--o| VideoSummary : latest_video
-    ChannelReport ||--|{ CommentRecord : comments
+## 7) Pagination and Enrichment Details
 
-    ChannelReport {
-        string input_raw
-        string channel_id
-        string title
-        string comments_status
-        string error
-    }
+### Video list pagination (channel modes)
+- Source: uploads playlist from `channels().list(part="contentDetails")`
+- API page size: up to 50
+- Stops when either:
+  - collected `max_videos`, or
+  - no next page
 
-    VideoSummary {
-        string video_id
-        string title
-        string published_at
-    }
+### Comment pagination
+- Source: `commentThreads().list(part="snippet")`
+- API page size: up to 100 per page
+- Stops when either:
+  - collected `max_comments`, or
+  - no next page/items
 
-    CommentRecord {
-        string comment_id
-        string author_channel_id
-        string enrichment_status
-    }
-```
+### Commenter enrichment
+- Extract unique `author_channel_id`s from comments
+- Fetch channel snippets in batches of 50
+- Map results back into each comment record
 
-### API Quota Usage
+## 8) Output Paths (JSON Only)
 
-Each channel lookup consumes approximately:
+Default base: `fetch_export/`
 
-- **1 unit**: Resolve channel ID (skipped if input is already `UC...`)
-- **1 unit**: Fetch channel metadata
-- **1 unit**: Identify latest video
-- **1 unit**: Fetch comments (per 100 comments)
-- **1 unit**: Enrich commenter profiles (per 50 commenters)
+- Channel single:
+  - `fetch_export/<channel_name>/<timestamp>.json`
+- Channel batch:
+  - `fetch_export/batch_mode/<timestamp>/<channel_name>.json`
+- Video mode:
+  - `fetch_export/video_mode/<video_id>/<timestamp>.json`
 
-With the default free quota of 10,000 units/day, you can process ~50–100 channels daily.
+Path values are sanitized for filesystem safety.
 
-### Project Layout
+## 9) JSON Schema Walkthrough
+
+## ChannelReport (channel single/batch output)
+- `input_raw`: original channel input
+- `channel_id`, `title`, `custom_url`, `channel_created_at`
+- `subscriber_count`, `video_count`
+- `videos`: array of per-video results
+- `error`: channel-level fatal error, if any
+
+Each item in `videos`:
+- `video`: `{ video_id, title, published_at }`
+- `comments_fetched`: total comments returned
+- `comments_status`: status for this video’s comment phase
+- `comments`: list of enriched comment records
+- `error`: per-video error if processing failed
+
+### VideoFetchReport (video mode output)
+- `input_video_id`
+- `video`: `{ video_id, title, published_at } | null`
+- `comments_fetched`, `comments_status`, `comments`
+- `error`
+
+### Comment record fields
+- `comment_id`, `comment_text`, `comment_published_at`
+- `author_display_name`, `author_channel_id`, `like_count`
+- `author_channel_title`, `author_channel_created_at`, `author_channel_custom_url`
+- `enrichment_status`
+
+## 10) Status Semantics
+
+### `comments_status` (per video/report)
+- `ok`: fetched successfully
+- `none`: no comments returned
+- `disabled`: comments disabled on video
+- `skipped`: skipped due to `--no-comments`
+- `partial`: some comments fetched before an API error
+- `error`: processing failed unexpectedly
+- `no_video`: reserved status in model for no-video scenarios
+
+### `enrichment_status` (per comment)
+- `ok`: commenter channel metadata found
+- `no_channel`: comment had no author channel ID
+- `not_found`: author channel ID present but metadata missing
+- `pending`: pre-enrichment placeholder (typically not present after full run)
+
+## 11) Log Anatomy (How to Read Verbose Output)
+
+Typical sequence for channel single:
+- `Config: ...`
+- `Starting channel single fetch: ...`
+- `Building channel report for ...`
+- `Resolving @handle ...` and `Resolved channel_id=...`
+- `Fetching channel metadata ...`
+- `Fetching latest N video(s) ...`
+- `Fetched uploads page: ...`
+- `Hydrating video metadata batch: ...`
+- `Processing video <id> (<title>)`
+- `Fetching up to X top-level comments ...`
+- `Fetched comments page: Y item(s) (total=A/B)`
+- `Comments fetch finished ...`
+- `Enriching Z unique commenter channel(s)`
+- `Enrichment batch size: ...`
+- `Commenter enrichment complete ...`
+- `Channel report complete ...`
+- `Exported ...`
+
+`total=A/B` means:
+- `A`: cumulative comments collected so far
+- `B`: requested limit (`--max-comments`)
+
+## 12) Batch Input File Format
+
+### `.txt`
+- One channel input per line
+- Lines starting with `#` ignored
+
+Example:
 
 ```text
-src/
-├── main.py                 # CLI entry point
-├── api/                    # YouTube client
-├── core/                   # Logging, Config
-├── credentials/            # .env storage
-├── export/                 # Output writers
-├── logic/                  # Orchestration
-├── models/                 # Data classes & Exceptions
-├── services/               # Domain logic
-└── utils/                  # Helper utilities
+@HombaleFilms
+https://www.youtube.com/@MrBeast
+UCX6OQ3DkcsbYNE6H8uQQuVA
 ```
+
+### `.csv`
+- Must include one of these headers:
+  - `channel`, `url`, `handle`, `channel_url`, `channel_id`
+
+Example:
+
+```csv
+channel
+@HombaleFilms
+@MrBeast
+```
+
+## 13) Common Failure Modes and How They Surface
+
+- Invalid/missing API key:
+  - startup fails with configuration error
+- Channel resolution failure:
+  - channel-level `error` set in JSON
+- Video not found (video mode):
+  - `error` set on `VideoFetchReport`
+- Comments disabled:
+  - `comments_status="disabled"`
+- Mid-fetch API issue on comments:
+  - `comments_status="partial"` if some pages already fetched
+
+## 14) Bot-Analytics Reading Guide
+
+When reviewing exported JSON, prioritize:
+- **Very new commenter channels**:
+  - compare `author_channel_created_at` vs `comment_published_at`
+- **No-channel commenters**:
+  - `enrichment_status="no_channel"`
+- **Missing commenter metadata**:
+  - `enrichment_status="not_found"`
+- **Repeated comment text patterns** across many distinct authors
+- **Sharp spikes** in low-history commenters on fresh uploads
+
+## 15) Troubleshooting
+
+- If output is too noisy, use `--quiet`.
+- If debugging behavior, run with `--debug`.
+- If API quota/rate feels tight, increase `--delay-ms`.
+- If comments look capped, check `--max-comments` value and whether the video actually has more top-level comments available.
+
+## 16) Developer Notes
+
+High-level layering:
+- CLI parse/dispatch
+- logic/report orchestration
+- service-level API interactions
+- exporter pathing/writing
+
+This keeps mode-specific orchestration separate from low-level API calls and serialization.
