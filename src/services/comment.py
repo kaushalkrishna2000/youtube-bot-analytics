@@ -6,10 +6,11 @@ import logging
 
 from googleapiclient.errors import HttpError
 
-from api.client import YouTubeClient
+from core.youtube_client import YouTubeClient
 from core.config import CHANNELS_BATCH_SIZE
 from models.exceptions import CommentsDisabledError
 from models.records import CommentRecord
+from utils.basic_utils import is_comments_disabled_error, normalize_author_channel_id
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def fetch_top_level_comments(client: YouTubeClient, video_id: str, *, max_commen
             )
             response = client.call(threads_request, delay_ms=delay_ms)
         except HttpError as exc:
-            if _is_comments_disabled(exc):
+            if is_comments_disabled_error(exc):
                 raise CommentsDisabledError(f"Comments are disabled for video {video_id}") from exc
             if records:
                 logger.warning("Partial comments fetch for video %s due to API error", video_id)
@@ -46,7 +47,7 @@ def fetch_top_level_comments(client: YouTubeClient, video_id: str, *, max_commen
         for item in items:
             top = item.get("snippet", {}).get("topLevelComment", {})
             top_snippet = top.get("snippet", {})
-            author_channel_id = _normalize_author_channel_id(top_snippet.get("authorChannelId"))
+            author_channel_id = normalize_author_channel_id(top_snippet.get("authorChannelId"))
             records.append(
                 CommentRecord(
                     comment_id=top.get("id", ""),
@@ -97,7 +98,7 @@ def enrich_commenter_channels(client: YouTubeClient, comments: list[CommentRecor
             channel_map[item["id"]] = item.get("snippet", {})
 
     for comment in comments:
-        channel_id = _normalize_author_channel_id(comment.author_channel_id)
+        channel_id = normalize_author_channel_id(comment.author_channel_id)
         comment.author_channel_id = channel_id
         if not channel_id:
             comment.enrichment_status = "no_channel"
@@ -115,31 +116,3 @@ def enrich_commenter_channels(client: YouTubeClient, comments: list[CommentRecor
 
     logger.info("Commenter enrichment complete for %s comment(s)", len(comments))
     return comments
-
-
-def _normalize_author_channel_id(raw: object) -> str | None:
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        stripped = raw.strip()
-        return stripped or None
-    if isinstance(raw, dict):
-        value = raw.get("value")
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-    return None
-
-
-def _is_comments_disabled(error: HttpError) -> bool:
-    if error.resp.status != 403:
-        return False
-    try:
-        for detail in error.error_details or []:
-            reason = detail.get("reason", "")
-            if reason in ("commentsDisabled", "disabledComments"):
-                return True
-    except (AttributeError, TypeError):
-        pass
-    body = str(error).lower()
-    return "commentsdisabled" in body or "disabledcomments" in body

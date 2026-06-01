@@ -1,9 +1,4 @@
-"""
-Configure root logger to stderr for the CLI.
-
-Flow logs use module __name__ (e.g. services.channel). User-facing summaries
-stay on stdout via print() in main.py.
-"""
+"""Configure root logger to stderr for Lambda/runtime flows."""
 
 from __future__ import annotations
 

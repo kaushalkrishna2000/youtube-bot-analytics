@@ -1,12 +1,12 @@
-"""Report builders for channel and video fetch modes."""
+"""Report builders for channel batch fetch mode."""
 
 from __future__ import annotations
 
 import logging
 
-from api.client import YouTubeClient
+from core.youtube_client import YouTubeClient
 from models.exceptions import ChannelNotFoundError, CommentsDisabledError
-from models.records import ChannelReport, VideoFetchReport, VideoReport, VideoSummary
+from models.records import ChannelReport, VideoReport, VideoSummary
 from services.channel import fetch_latest_videos, get_channel_report
 from services.comment import enrich_commenter_channels, fetch_top_level_comments
 
@@ -44,32 +44,6 @@ def build_channel_report(client: YouTubeClient, channel_input: str, *, include_c
     return report
 
 
-def build_video_report(client: YouTubeClient, video_id: str, *, max_comments: int = 1000, delay_ms: int = 0) -> VideoFetchReport:
-    """Build report for a single video id."""
-    logger.info("Building video report for %s", video_id)
-    video = _fetch_video_summary(client, video_id, delay_ms=delay_ms)
-    if video is None:
-        return VideoFetchReport(input_video_id=video_id, error=f"Video not found: {video_id}")
-
-    try:
-        comments, fetch_status = fetch_top_level_comments(client, video.video_id, max_comments=max_comments, delay_ms=delay_ms)
-        comments = enrich_commenter_channels(client, comments, delay_ms=delay_ms)
-    except CommentsDisabledError:
-        return VideoFetchReport(input_video_id=video_id, video=video, comments=[], comments_fetched=0, comments_status="disabled")
-    except Exception as exc:
-        return VideoFetchReport(input_video_id=video_id, video=video, comments=[], comments_fetched=0, comments_status="error", error=str(exc))
-
-    status = fetch_status if comments else ("none" if fetch_status == "ok" else fetch_status)
-    logger.info("Video report complete for %s: %s comment(s), status=%s", video_id, len(comments), status)
-    return VideoFetchReport(
-        input_video_id=video_id,
-        video=video,
-        comments=comments,
-        comments_fetched=len(comments),
-        comments_status=status,
-    )
-
-
 def _build_video_report_for_summary(client: YouTubeClient, video: VideoSummary, *, max_comments: int, delay_ms: int) -> VideoReport:
     try:
         comments, fetch_status = fetch_top_level_comments(client, video.video_id, max_comments=max_comments, delay_ms=delay_ms)
@@ -81,13 +55,3 @@ def _build_video_report_for_summary(client: YouTubeClient, video: VideoSummary, 
     except Exception as exc:
         logger.exception("Video processing failed for %s", video.video_id)
         return VideoReport(video=video, comments=[], comments_fetched=0, comments_status="error", error=str(exc))
-
-
-def _fetch_video_summary(client: YouTubeClient, video_id: str, *, delay_ms: int = 0) -> VideoSummary | None:
-    request = client.service.videos().list(part="snippet", id=video_id)
-    response = client.call(request, delay_ms=delay_ms)
-    items = response.get("items", [])
-    if not items:
-        return None
-    snippet = items[0].get("snippet", {})
-    return VideoSummary(video_id=video_id, title=snippet.get("title", ""), published_at=snippet.get("publishedAt", ""))

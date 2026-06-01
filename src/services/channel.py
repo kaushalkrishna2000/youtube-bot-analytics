@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from api.client import YouTubeClient
+from core.youtube_client import YouTubeClient
 from models.records import ChannelReport, VideoSummary
+from utils.basic_utils import parse_int_or_none
 from utils.resolver import resolve_channel_id
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ def get_channel_report(client: YouTubeClient, channel_input: str, *, delay_ms: i
     report.title = snippet.get("title")
     report.custom_url = snippet.get("customUrl")
     report.channel_created_at = snippet.get("publishedAt")
-    report.subscriber_count = _parse_int(statistics.get("subscriberCount"))
-    report.video_count = _parse_int(statistics.get("videoCount"))
+    report.subscriber_count = parse_int_or_none(statistics.get("subscriberCount"))
+    report.video_count = parse_int_or_none(statistics.get("videoCount"))
     return report
 
 
@@ -110,12 +111,3 @@ def fetch_latest_videos(client: YouTubeClient, channel_id: str, *, max_videos: i
 
     logger.info("Resolved %s latest video(s) for channel %s", len(summaries), channel_id)
     return summaries
-
-
-def _parse_int(value: str | None) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None

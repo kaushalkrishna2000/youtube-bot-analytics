@@ -1,23 +1,8 @@
-"""
-Environment and quota-related constants.
-
-Loads src/credentials/.env once at import time. Paths are relative to this file
-so the app works regardless of the shell's current working directory.
-"""
+"""Environment and quota-related constants for Lambda runtime."""
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-_CORE_DIR = Path(__file__).resolve().parent
-_SRC_ROOT = _CORE_DIR.parent
-_CREDENTIALS_DIR = _SRC_ROOT / "credentials"
-_ENV_FILE = _CREDENTIALS_DIR / ".env"
-
-load_dotenv(_ENV_FILE)
 
 # commentThreads.list maxResults ceiling per YouTube API.
 MAX_COMMENTS_CAP = 100
@@ -27,14 +12,11 @@ DEFAULT_REQUEST_DELAY_MS = 150
 
 
 def load_api_key() -> str:
-    """Load the YouTube API key from the single supported environment source."""
+    """Load the YouTube API key from environment variables."""
     api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
 
     if not api_key:
-        raise ValueError(
-            "No YouTube API key found. Set YOUTUBE_API_KEY in src/credentials/.env "
-            "(see src/credentials/.env.example)."
-        )
+        raise ValueError("No YouTube API key found. Set YOUTUBE_API_KEY in Lambda environment variables.")
     return api_key
 
 

@@ -1,7 +1,7 @@
 """
-Domain dataclasses for channel/video fetch runs.
+Domain dataclasses for channel batch fetch runs.
 
-Channel-mode reports are multi-video. Video-mode reports hold one video context.
+Channel-mode reports are multi-video.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 EnrichmentStatus = Literal["ok", "no_channel", "not_found", "pending"]
-CommentsStatus = Literal["ok", "disabled", "none", "skipped", "no_video", "partial", "error"]
+CommentsStatus = Literal["ok", "disabled", "none", "skipped", "partial", "error"]
 
 
 @dataclass
@@ -34,7 +34,7 @@ class CommentRecord:
 
 @dataclass(frozen=True)
 class VideoSummary:
-    """Video metadata used in channel/video mode reports."""
+    """Video metadata used in channel batch reports."""
 
     video_id: str
     title: str
@@ -85,27 +85,5 @@ class ChannelReport:
             "subscriber_count": self.subscriber_count,
             "video_count": self.video_count,
             "videos": [v.to_dict() for v in self.videos],
-            "error": self.error,
-        }
-
-
-@dataclass
-class VideoFetchReport:
-    """Top-level output for fetch video mode."""
-
-    input_video_id: str
-    video: VideoSummary | None = None
-    comments: list[CommentRecord] = field(default_factory=list)
-    comments_fetched: int = 0
-    comments_status: CommentsStatus = "none"
-    error: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "input_video_id": self.input_video_id,
-            "video": asdict(self.video) if self.video else None,
-            "comments_fetched": self.comments_fetched,
-            "comments_status": self.comments_status,
-            "comments": [c.to_dict() for c in self.comments],
             "error": self.error,
         }
