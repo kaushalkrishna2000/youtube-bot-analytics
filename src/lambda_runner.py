@@ -33,34 +33,33 @@ def _base_result(error: str | None = None) -> dict[str, Any]:
         "failures": [],
         "config_used": {},
     }
-def run_fetch_job(
-    channels: list[str],
-    *,
-    include_comments: bool = True,
-    max_videos: int = 10,
-    max_comments: int = 1000,
-    delay_ms: int | None = None,
-    quiet: bool = True,
-) -> dict[str, Any]:
+
+
+def run_fetch_job(channels: list[str], *, include_comments: bool = True, max_videos: int = 10, max_comments: int = 1000, delay_ms: int | None = None, quiet: bool = False) -> dict[str, Any]:
     """Run channel batch fetch and return JSON-safe in-memory payload."""
     configure_logging(level=logging.WARNING if quiet else logging.INFO, quiet=quiet)
+    logger.info("Fetch job validation started")
 
     if not isinstance(channels, list):
+        logger.info("Fetch job validation failed: channels must be a list")
         result = _base_result("channels must be a list of strings")
         return result
 
     cleaned_channels = normalize_nonempty_str_list(channels)
     if not cleaned_channels:
+        logger.info("Fetch job validation failed: no valid channels provided")
         result = _base_result("No valid channels provided")
         return result
 
     safe_max_videos, max_videos_error = coerce_int_with_min(max_videos, field_name="max_videos")
     if max_videos_error:
+        logger.info("Fetch job validation failed: %s", max_videos_error)
         result = _base_result(max_videos_error)
         return result
 
     safe_max_comments, max_comments_error = coerce_int_with_min(max_comments, field_name="max_comments")
     if max_comments_error:
+        logger.info("Fetch job validation failed: %s", max_comments_error)
         result = _base_result(max_comments_error)
         return result
 
@@ -69,6 +68,7 @@ def run_fetch_job(
     else:
         resolved_delay_ms, delay_error = coerce_int_with_min(delay_ms, field_name="delay_ms", minimum=0)
         if delay_error:
+            logger.info("Fetch job validation failed: %s", delay_error)
             result = _base_result(delay_error)
             return result
         assert resolved_delay_ms is not None
@@ -80,10 +80,13 @@ def run_fetch_job(
         "delay_ms": resolved_delay_ms,
         "quiet": quiet,
     }
+    logger.info("Fetch job config resolved: channels=%s include_comments=%s max_videos=%s max_comments=%s delay_ms=%s quiet=%s", len(cleaned_channels), include_comments, safe_max_videos, safe_max_comments, resolved_delay_ms, quiet)
 
     try:
+        logger.info("Initializing YouTube client")
         client = YouTubeClient()
     except ValueError as exc:
+        logger.info("YouTube client initialization failed: %s", exc)
         failures = [{"channel_input": item, "error": str(exc)} for item in cleaned_channels]
         return {
             "ok": False,
@@ -93,6 +96,7 @@ def run_fetch_job(
             "failures": failures,
             "config_used": config_used,
         }
+    logger.info("YouTube client initialized")
 
     reports, failures = run_batch(
         client,
@@ -107,6 +111,7 @@ def run_fetch_job(
     total = len(cleaned_channels)
     failed = len(failure_payload)
     success = total - failed
+    logger.info("Fetch job finished: total=%s success=%s failed=%s", total, success, failed)
 
     return {
         "ok": failed == 0,
