@@ -12,6 +12,19 @@ class ChannelNotFoundError(ValueError):
 
 
 def fetch_channel_document(client: YouTubeClient, channel_input: str, *, delay_ms: int) -> ChannelDocument:
+    """Resolve a channel input and fetch its Mongo-ready metadata.
+
+    Args:
+        client: YouTube API client wrapper.
+        channel_input: Handle, channel ID, name, or YouTube URL.
+        delay_ms: Delay applied after each YouTube API request.
+
+    Returns:
+        Channel document populated from YouTube ``snippet`` and ``statistics``.
+
+    Raises:
+        ChannelNotFoundError: If the input cannot be resolved or fetched.
+    """
     channel_id = resolve_channel_id(client, channel_input, delay_ms=delay_ms)
     request = client.service.channels().list(part="snippet,statistics", id=channel_id)
     response = client.call(request, delay_ms=delay_ms)
@@ -34,10 +47,24 @@ def fetch_channel_document(client: YouTubeClient, channel_input: str, *, delay_m
 
 
 def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: int) -> str:
+    """Resolve a supported channel input shape into a canonical channel ID.
+
+    Args:
+        client: YouTube API client wrapper.
+        channel_input: Raw channel input from settings.
+        delay_ms: Delay applied after each YouTube API request.
+
+    Returns:
+        YouTube channel ID beginning with ``UC``.
+
+    Raises:
+        ChannelNotFoundError: If the input shape or YouTube lookup fails.
+    """
     raw = channel_input.strip()
     if CHANNEL_ID_RE.match(raw):
         return raw
 
+    # Handles can be supplied directly, with @, or as part of a YouTube URL.
     handle_match = HANDLE_RE.match(raw)
     if handle_match:
         return _resolve_by_handle(client, handle_match.group(1), delay_ms=delay_ms)
@@ -62,6 +89,7 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
 
 
 def _resolve_by_handle(client: YouTubeClient, handle: str, *, delay_ms: int) -> str:
+    """Resolve a YouTube handle to a channel ID."""
     request = client.service.channels().list(part="id", forHandle=handle)
     response = client.call(request, delay_ms=delay_ms)
     items = response.get("items", [])
@@ -71,6 +99,7 @@ def _resolve_by_handle(client: YouTubeClient, handle: str, *, delay_ms: int) -> 
 
 
 def _resolve_legacy(client: YouTubeClient, kind: str, name: str, *, delay_ms: int) -> str:
+    """Resolve legacy YouTube ``/user`` or ``/c`` paths to a channel ID."""
     if kind == "user":
         request = client.service.channels().list(part="id", forUsername=name)
     else:

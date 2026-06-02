@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ChannelDocument(BaseModel):
+    """Channel metadata copied from the upstream channel-stage payload."""
+
     model_config = ConfigDict(extra="ignore")
 
     channel_id: str
@@ -18,6 +20,8 @@ class ChannelDocument(BaseModel):
 
 
 class VideoDocument(BaseModel):
+    """Mongo-ready video metadata fetched from a channel uploads playlist."""
+
     model_config = ConfigDict(extra="forbid")
 
     video_id: str

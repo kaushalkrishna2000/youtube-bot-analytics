@@ -25,12 +25,30 @@ def fetch_comment_documents(
     max_comments: int,
     delay_ms: int,
 ) -> tuple[list[CommentDocument], str]:
+    """Fetch and enrich top-level comments for one video.
+
+    Args:
+        client: YouTube API client wrapper.
+        channel_id: Parent channel ID for the video.
+        video_id: YouTube video ID to fetch comments for.
+        max_comments: Maximum number of top-level comments to fetch.
+        delay_ms: Delay applied after each YouTube API request.
+
+    Returns:
+        Tuple of enriched comment documents and fetch status.
+
+    Raises:
+        CommentsDisabledError: If YouTube reports that comments are disabled.
+        HttpError: If the first comments request fails for another reason.
+    """
     comments: list[CommentDocument] = []
     next_page_token: str | None = None
     status = "ok"
 
     while len(comments) < max_comments:
         try:
+            # Page size shrinks near the configured cap so each invocation stays
+            # inside its requested comment budget.
             response = _fetch_comment_page(
                 client,
                 video_id=video_id,
@@ -42,6 +60,7 @@ def fetch_comment_documents(
             if is_comments_disabled_error(exc):
                 raise CommentsDisabledError(f"Comments are disabled for video {video_id}") from exc
             if comments:
+                # Preserve already-fetched comments when a later page fails.
                 status = "partial"
                 break
             raise
@@ -69,6 +88,7 @@ def _fetch_comment_page(
     page_token: str | None,
     delay_ms: int,
 ) -> dict[str, Any]:
+    """Fetch one page of top-level comments for a video."""
     request = client.service.commentThreads().list(
         part="snippet",
         videoId=video_id,
@@ -80,6 +100,7 @@ def _fetch_comment_page(
 
 
 def _build_comment_document(item: dict[str, Any], *, channel_id: str, video_id: str) -> CommentDocument:
+    """Convert a YouTube comment thread item into a Mongo-ready document."""
     top = item.get("snippet", {}).get("topLevelComment", {})
     snippet = top.get("snippet", {})
     author_channel_id = normalize_author_channel_id(snippet.get("authorChannelId"))
@@ -102,6 +123,7 @@ def _enrich_commenter_channels(
     *,
     delay_ms: int,
 ) -> list[CommentDocument]:
+    """Attach author channel metadata to comments when channel IDs are present."""
     channel_ids = sorted({comment.author_channel_id for comment in comments if comment.author_channel_id})
     if not channel_ids:
         return comments

@@ -6,5 +6,6 @@ from typing import Any
 
 
 def extract_video_id(item: dict[str, Any]) -> str | None:
+    """Extract a video ID from a playlist item response."""
     video_id = item.get("contentDetails", {}).get("videoId")
     return video_id if isinstance(video_id, str) and video_id else None

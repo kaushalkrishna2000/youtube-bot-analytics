@@ -11,6 +11,17 @@ from channel_job.utils.time import utc_now
 
 
 def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: ChannelStagePayload) -> UploadMetadata:
+    """Write a channel-stage payload as compact JSON to S3.
+
+    Args:
+        s3_client: Boto3 S3 client or compatible test double.
+        bucket: Destination bucket name.
+        prefix: Destination key prefix without a trailing slash requirement.
+        payload: Channel-stage payload to serialize.
+
+    Returns:
+        Metadata describing the uploaded S3 object.
+    """
     key = _channel_key(prefix, payload.job_id, payload.channel.channel_id)
     body = json.dumps(dump_model(payload), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     response = s3_client.put_object(
@@ -30,5 +41,6 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Channel
 
 
 def _channel_key(prefix: str, job_id: str, channel_id: str) -> str:
+    """Build the date-partitioned S3 key for one channel payload."""
     now = utc_now()
     return f"{prefix}/{now:%Y/%m/%d}/{job_id}/{slug(channel_id)}.json"

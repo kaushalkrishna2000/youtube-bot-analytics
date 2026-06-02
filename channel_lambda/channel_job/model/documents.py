@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ChannelDocument(BaseModel):
+    """Mongo-ready channel metadata fetched from YouTube."""
+
     model_config = ConfigDict(extra="forbid")
 
     channel_id: str

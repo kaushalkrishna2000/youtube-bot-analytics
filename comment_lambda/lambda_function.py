@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from comment_job.config import configure_logging
 
+# Support both AWS Lambda's flat handler import and package-style local imports.
 if __package__:
     from .runner import build_result, finalize_result, load_runtime, process_work_item, resolve_work_items
 else:
@@ -20,7 +21,23 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
+# -----------------------------------------------------------------------------
+# Lambda entrypoint
+# -----------------------------------------------------------------------------
+
+
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+    """Run the S3-triggered comment staging Lambda.
+
+    Args:
+        event: S3 event payload containing video-stage objects to process.
+        context: AWS Lambda context object. It is accepted for AWS compatibility
+            and local runner symmetry.
+
+    Returns:
+        Result dictionary containing processed inputs, staged comment outputs,
+        Mongo update counts, and any per-object errors.
+    """
     runtime = None
     try:
         runtime = load_runtime(event, context)

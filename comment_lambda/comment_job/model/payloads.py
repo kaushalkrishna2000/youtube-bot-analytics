@@ -10,6 +10,8 @@ from comment_job.model.documents import ChannelDocument, CommentDocument, VideoD
 
 
 class VideoStagePayload(BaseModel):
+    """Upstream S3 payload read from the video staging prefix."""
+
     model_config = ConfigDict(extra="ignore")
 
     schema_version: str
@@ -22,6 +24,8 @@ class VideoStagePayload(BaseModel):
 
 
 class CommentStagePayload(BaseModel):
+    """Durable S3 payload containing the comment fetch result for one video."""
+
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str
@@ -38,6 +42,8 @@ class CommentStagePayload(BaseModel):
 
 
 class UploadMetadata(BaseModel):
+    """Metadata returned after writing a stage payload to S3."""
+
     model_config = ConfigDict(extra="forbid")
 
     bucket: str

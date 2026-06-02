@@ -6,6 +6,14 @@ from googleapiclient.errors import HttpError
 
 
 def is_comments_disabled_error(error: HttpError) -> bool:
+    """Return whether a YouTube API error means comments are disabled.
+
+    Args:
+        error: Google API HTTP error raised by a comments request.
+
+    Returns:
+        ``True`` when the status and reason/body match disabled comments.
+    """
     if error.resp.status != 403:
         return False
     try:

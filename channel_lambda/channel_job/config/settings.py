@@ -18,6 +18,11 @@ CODE_CHANNELS: list[str] = []
 
 
 def load_settings() -> Settings:
+    """Load and validate all channel-stage settings from environment variables.
+
+    Returns:
+        Frozen Settings model for the current Lambda invocation.
+    """
     return Settings(
         youtube_api_key=_required("YOUTUBE_API_KEY"),
         youtube_channels=_load_channel_inputs(),
@@ -32,6 +37,12 @@ def load_settings() -> Settings:
 
 
 def _load_channel_inputs() -> list[str]:
+    """Load channel inputs from environment first, then code defaults.
+
+    Returns:
+        Non-empty channel identifiers from ``YOUTUBE_CHANNELS`` or
+        ``CODE_CHANNELS``.
+    """
     import os
 
     raw_channels = os.getenv("YOUTUBE_CHANNELS", "").strip()

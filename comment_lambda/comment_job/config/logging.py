@@ -13,6 +13,11 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def configure_logging() -> None:
+    """Configure root logging for local runs and AWS Lambda reuse.
+
+    Existing Lambda handlers are updated in place so warm invocations keep the
+    current log level without attaching duplicate handlers.
+    """
     level = _resolve_log_level(os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL))
     root = logging.getLogger()
     if root.handlers:
@@ -29,4 +34,5 @@ def configure_logging() -> None:
 
 
 def _resolve_log_level(raw_level: str) -> int:
+    """Convert a string log level to a logging module constant."""
     return getattr(logging, raw_level.strip().upper(), logging.INFO)

@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ChannelDocument(BaseModel):
+    """Channel metadata copied from an upstream stage payload."""
+
     model_config = ConfigDict(extra="ignore")
 
     channel_id: str
@@ -18,6 +20,8 @@ class ChannelDocument(BaseModel):
 
 
 class VideoDocument(BaseModel):
+    """Video metadata copied from the upstream video-stage payload."""
+
     model_config = ConfigDict(extra="ignore")
 
     video_id: str
@@ -30,6 +34,8 @@ class VideoDocument(BaseModel):
 
 
 class CommentDocument(BaseModel):
+    """Mongo-ready top-level comment with optional author-channel enrichment."""
+
     model_config = ConfigDict(extra="forbid")
 
     comment_id: str

@@ -22,7 +22,22 @@ from comment_job.utils import (
 logger = logging.getLogger(__name__)
 
 
+# -----------------------------------------------------------------------------
+# Runtime setup
+# -----------------------------------------------------------------------------
+
+
 def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
+    """Create the runtime dependency bundle for one comment-stage invocation.
+
+    Args:
+        event: S3 event payload with video-stage object references.
+        context: AWS Lambda context object. It is accepted for handler symmetry.
+
+    Returns:
+        Runtime object containing settings, event data, clients, and writer
+        dependencies.
+    """
     settings = load_settings()
     return Runtime(
         settings=settings,
@@ -33,12 +48,47 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
     )
 
 
+# -----------------------------------------------------------------------------
+# Work item resolution
+# -----------------------------------------------------------------------------
+
+
 def resolve_work_items(runtime: Runtime) -> list[dict[str, str]]:
+    """Extract S3 object references from the invocation event.
+
+    Args:
+        runtime: Runtime bundle containing the raw Lambda event.
+
+    Returns:
+        List of dictionaries with ``bucket`` and ``key`` values.
+    """
     return parse_s3_event(runtime.event)
 
 
+# -----------------------------------------------------------------------------
+# Result tracking
+# -----------------------------------------------------------------------------
+
+
 def build_result(runtime: Runtime) -> dict[str, Any]:
+    """Initialize the comment-stage result payload and startup log entry.
+
+    Args:
+        runtime: Runtime bundle for the current invocation.
+
+    Returns:
+        Mutable result dictionary updated as video-stage objects are processed.
+    """
     refs = resolve_work_items(runtime)
+    logger.info(
+        "Starting comment stage processed=%s bucket=%s prefix=%s max_comments=%s ttl_days=%s delay_ms=%s",
+        len(refs),
+        runtime.settings.pipeline_s3_bucket,
+        runtime.settings.comment_stage_prefix,
+        runtime.settings.max_comments,
+        runtime.settings.staging_ttl_days,
+        runtime.settings.request_delay_ms,
+    )
     return {
         "ok": True,
         "stage": "comment",
@@ -51,7 +101,19 @@ def build_result(runtime: Runtime) -> dict[str, Any]:
     }
 
 
+# -----------------------------------------------------------------------------
+# Work item processing
+# -----------------------------------------------------------------------------
+
+
 def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str, str]) -> None:
+    """Process one video-stage S3 object into comment-stage outputs.
+
+    Args:
+        runtime: Runtime bundle for S3, YouTube, and Mongo access.
+        result: Mutable invocation result that receives counters and errors.
+        s3_ref: S3 object reference containing ``bucket`` and ``key``.
+    """
     try:
         raw_payload = read_json_object(runtime.s3_client, bucket=s3_ref["bucket"], key=s3_ref["key"])
         source = VideoStagePayload.model_validate(raw_payload)
@@ -68,6 +130,13 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
             comments = []
             comments_status = "disabled"
             error = str(exc)
+            logger.info(
+                "Comments disabled channel_id=%s video_id=%s source=%s/%s",
+                source.channel.channel_id,
+                source.video.video_id,
+                s3_ref["bucket"],
+                s3_ref["key"],
+            )
 
         payload = build_comment_stage_payload(runtime, source, comments, comments_status=comments_status, error=error)
         upload = put_stage_json(
@@ -79,21 +148,62 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
 
         result["comment_results_staged"] += 1
         result["outputs"].append(dump_model(upload))
-        result["comments_upserted"] += runtime.mongo_writer.upsert_comments(comments)
-        result["video_status_updates"] += runtime.mongo_writer.update_video_comment_status(
+        comments_upserted = runtime.mongo_writer.upsert_comments(comments)
+        video_status_updates = runtime.mongo_writer.update_video_comment_status(
             source.video.video_id,
             comments_status=comments_status,
             comments_fetched=len(comments),
             error=error,
+        )
+        result["comments_upserted"] += comments_upserted
+        result["video_status_updates"] += video_status_updates
+        logger.info(
+            "Processed video-stage source=%s/%s channel_id=%s video_id=%s comments_status=%s comments_fetched=%s s3_key=%s comments_upserted=%s video_status_updates=%s",
+            s3_ref["bucket"],
+            s3_ref["key"],
+            source.channel.channel_id,
+            source.video.video_id,
+            comments_status,
+            len(comments),
+            upload.key,
+            comments_upserted,
+            video_status_updates,
         )
     except Exception as exc:
         logger.exception("Failed to stage comments for %s/%s", s3_ref["bucket"], s3_ref["key"])
         result["errors"].append({"bucket": s3_ref["bucket"], "key": s3_ref["key"], "message": str(exc)})
 
 
+# -----------------------------------------------------------------------------
+# Result tracking
+# -----------------------------------------------------------------------------
+
+
 def finalize_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Finalize success status and emit the comment-stage summary log.
+
+    Args:
+        result: Mutable invocation result built during processing.
+
+    Returns:
+        The same result dictionary with final ``ok`` status applied.
+    """
     result["ok"] = not result["errors"]
+    logger.info(
+        "Finished comment stage ok=%s processed=%s comment_results_staged=%s comments_upserted=%s video_status_updates=%s errors=%s",
+        result["ok"],
+        result["processed"],
+        result["comment_results_staged"],
+        result["comments_upserted"],
+        result["video_status_updates"],
+        len(result["errors"]),
+    )
     return result
+
+
+# -----------------------------------------------------------------------------
+# Payload building
+# -----------------------------------------------------------------------------
 
 
 def build_comment_stage_payload(
@@ -104,6 +214,19 @@ def build_comment_stage_payload(
     comments_status: str,
     error: str | None,
 ) -> CommentStagePayload:
+    """Build the S3 handoff payload for fetched comments on one video.
+
+    Args:
+        runtime: Runtime bundle containing TTL settings.
+        source: Video-stage payload that produced the comment fetch.
+        comments: Mongo-ready comment documents fetched from YouTube.
+        comments_status: Fetch outcome such as ``ok``, ``none``, ``partial``,
+            or ``disabled``.
+        error: Optional error message stored when comments are disabled.
+
+    Returns:
+        Comment stage payload written to the configured S3 prefix.
+    """
     created_at = utc_now()
     return CommentStagePayload(
         schema_version="2026-06-02",

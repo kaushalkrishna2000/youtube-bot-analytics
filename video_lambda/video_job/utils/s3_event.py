@@ -7,6 +7,17 @@ from urllib.parse import unquote_plus
 
 
 def parse_s3_event(event: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Extract bucket/key references from an AWS S3 notification event.
+
+    Args:
+        event: Raw Lambda event payload.
+
+    Returns:
+        List of dictionaries with decoded ``bucket`` and ``key`` values.
+
+    Raises:
+        ValueError: If the event is missing S3 records or object references.
+    """
     if not isinstance(event, dict):
         raise ValueError("S3 event must be a dictionary")
     records = event.get("Records")
@@ -20,5 +31,6 @@ def parse_s3_event(event: dict[str, Any] | None) -> list[dict[str, str]]:
         key = s3_info.get("object", {}).get("key")
         if not bucket or not key:
             raise ValueError("S3 event record missing bucket or key")
+        # S3 notifications URL-encode keys, including spaces as plus signs.
         refs.append({"bucket": bucket, "key": unquote_plus(key)})
     return refs

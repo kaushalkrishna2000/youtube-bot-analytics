@@ -10,6 +10,8 @@ from channel_job.model.settings import Settings
 
 
 class Runtime(BaseModel):
+    """Per-invocation dependency bundle for the channel staging runner."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     settings: Settings

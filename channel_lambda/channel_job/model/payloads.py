@@ -10,6 +10,8 @@ from channel_job.model.documents import ChannelDocument
 
 
 class ChannelStagePayload(BaseModel):
+    """Durable S3 payload handed from channel stage to video stage."""
+
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str
@@ -21,6 +23,8 @@ class ChannelStagePayload(BaseModel):
 
 
 class UploadMetadata(BaseModel):
+    """Metadata returned after writing a stage payload to S3."""
+
     model_config = ConfigDict(extra="forbid")
 
     bucket: str

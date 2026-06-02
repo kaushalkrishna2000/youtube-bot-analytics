@@ -15,6 +15,11 @@ DEFAULT_VIDEOS_COLLECTION = "videos"
 
 
 def load_settings() -> Settings:
+    """Load and validate all video-stage settings from environment variables.
+
+    Returns:
+        Frozen Settings model for the current Lambda invocation.
+    """
     return Settings(
         youtube_api_key=_required("YOUTUBE_API_KEY"),
         pipeline_s3_bucket=_required("PIPELINE_S3_BUCKET"),

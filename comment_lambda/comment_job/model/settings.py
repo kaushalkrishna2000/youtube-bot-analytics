@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class Settings(BaseModel):
+    """Validated environment settings for the comment staging Lambda."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     youtube_api_key: str
