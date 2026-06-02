@@ -11,7 +11,6 @@ DEFAULT_STAGING_TTL_DAYS = 2
 DEFAULT_MAX_COMMENTS = 2000
 DEFAULT_REQUEST_DELAY_MS = 150
 DEFAULT_MONGO_DB_NAME = "youtube_bot_analytics"
-DEFAULT_CHANNELS_COLLECTION = "channels"
 DEFAULT_VIDEOS_COLLECTION = "videos"
 DEFAULT_COMMENTS_COLLECTION = "comments"
 
@@ -26,8 +25,6 @@ def load_settings() -> Settings:
         request_delay_ms=_int_env("YOUTUBE_REQUEST_DELAY_MS", DEFAULT_REQUEST_DELAY_MS, minimum=0),
         mongo_uri=_required("MONGO_URI"),
         mongo_db_name=_optional("MONGO_DB_NAME", DEFAULT_MONGO_DB_NAME),
-        mongo_channels_collection=_optional("MONGO_CHANNELS_COLLECTION", DEFAULT_CHANNELS_COLLECTION),
         mongo_videos_collection=_optional("MONGO_VIDEOS_COLLECTION", DEFAULT_VIDEOS_COLLECTION),
         mongo_comments_collection=_optional("MONGO_COMMENTS_COLLECTION", DEFAULT_COMMENTS_COLLECTION),
     )
-

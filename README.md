@@ -40,14 +40,10 @@ retryable invocations.
 Each local job package contains:
 
 ```text
-config.py
-logging_config.py
-models.py
-mongo_writer_client.py
-resolver.py
-s3_stager.py
-youtube_client.py
-basic_utils.py
+client/
+config/
+model/
+utils/
 ```
 
 ## S3 Prefixes
@@ -65,27 +61,54 @@ objects automatically.
 
 ## Environment Variables
 
+### `channel_lambda`
+
 | Env name | Required | Default | Description |
 | --- | --- | --- | --- |
-| `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. Required by all three Lambdas. |
-| `PIPELINE_S3_BUCKET` | Yes | None | Bucket used for all staging prefixes. Required by all three Lambdas. |
-| `MONGO_URI` | Yes | None | MongoDB connection string. Required by all three Lambdas. |
-| `YOUTUBE_CHANNELS` | No | `CODE_CHANNELS` in `channel_lambda/channel_job/config.py` | Comma-separated channel handles, channel IDs, names, or YouTube channel URLs for `channel_lambda`. When set, this env var is used instead of `CODE_CHANNELS`. |
+| `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. |
+| `YOUTUBE_CHANNELS` | No | `CODE_CHANNELS` in `channel_lambda/channel_job/config/settings.py` | Comma-separated channel handles, channel IDs, names, or YouTube channel URLs. When set, this env var is used instead of `CODE_CHANNELS`. |
+| `PIPELINE_S3_BUCKET` | Yes | None | Bucket used for channel-stage objects. |
 | `CHANNEL_STAGE_PREFIX` | No | `staging/channels` | Prefix for channel-stage objects written by `channel_lambda`. |
-| `VIDEO_STAGE_PREFIX` | No | `staging/videos` | Prefix for video-stage objects written by `video_lambda`. |
-| `COMMENT_STAGE_PREFIX` | No | `staging/comments` | Prefix for comment-stage objects written by `comment_lambda`. |
 | `STAGING_TTL_DAYS` | No | `2` | Logical TTL added to staged payloads and S3 metadata. |
-| `YOUTUBE_MAX_VIDEOS` | No | `20` | Max latest videos fetched per channel by `video_lambda`. |
-| `YOUTUBE_MAX_COMMENTS` | No | `2000` | Max top-level comments fetched per video by `comment_lambda`. |
 | `YOUTUBE_REQUEST_DELAY_MS` | No | `150` | Delay after each YouTube API call. |
-| `LOG_LEVEL` | No | `INFO` | Logging level for each Lambda. Supports standard Python levels such as `DEBUG`, `INFO`, `WARNING`, and `ERROR`. |
+| `LOG_LEVEL` | No | `INFO` | Logging level. Supports standard Python levels such as `DEBUG`, `INFO`, `WARNING`, and `ERROR`. |
+| `MONGO_URI` | Yes | None | MongoDB connection string. |
 | `MONGO_DB_NAME` | No | `youtube_bot_analytics` | Mongo database name. |
 | `MONGO_CHANNELS_COLLECTION` | No | `channels` | Collection for channel documents. |
-| `MONGO_VIDEOS_COLLECTION` | No | `videos` | Collection for video documents. |
-| `MONGO_COMMENTS_COLLECTION` | No | `comments` | Collection for comment documents. |
 
 Leave `CODE_CHANNELS` empty when the channel list should come only from Lambda
 environment variables.
+
+### `video_lambda`
+
+| Env name | Required | Default | Description |
+| --- | --- | --- | --- |
+| `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. |
+| `PIPELINE_S3_BUCKET` | Yes | None | Bucket used to read channel-stage objects and write video-stage objects. |
+| `VIDEO_STAGE_PREFIX` | No | `staging/videos` | Prefix for video-stage objects written by `video_lambda`. |
+| `STAGING_TTL_DAYS` | No | `2` | Logical TTL added to staged payloads and S3 metadata. |
+| `YOUTUBE_MAX_VIDEOS` | No | `20` | Max latest videos fetched per channel. |
+| `YOUTUBE_REQUEST_DELAY_MS` | No | `150` | Delay after each YouTube API call. |
+| `LOG_LEVEL` | No | `INFO` | Logging level. Supports standard Python levels such as `DEBUG`, `INFO`, `WARNING`, and `ERROR`. |
+| `MONGO_URI` | Yes | None | MongoDB connection string. |
+| `MONGO_DB_NAME` | No | `youtube_bot_analytics` | Mongo database name. |
+| `MONGO_VIDEOS_COLLECTION` | No | `videos` | Collection for video documents. |
+
+### `comment_lambda`
+
+| Env name | Required | Default | Description |
+| --- | --- | --- | --- |
+| `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. |
+| `PIPELINE_S3_BUCKET` | Yes | None | Bucket used to read video-stage objects and write comment-stage objects. |
+| `COMMENT_STAGE_PREFIX` | No | `staging/comments` | Prefix for comment-stage objects written by `comment_lambda`. |
+| `STAGING_TTL_DAYS` | No | `2` | Logical TTL added to staged payloads and S3 metadata. |
+| `YOUTUBE_MAX_COMMENTS` | No | `2000` | Max top-level comments fetched per video. |
+| `YOUTUBE_REQUEST_DELAY_MS` | No | `150` | Delay after each YouTube API call. |
+| `LOG_LEVEL` | No | `INFO` | Logging level. Supports standard Python levels such as `DEBUG`, `INFO`, `WARNING`, and `ERROR`. |
+| `MONGO_URI` | Yes | None | MongoDB connection string. |
+| `MONGO_DB_NAME` | No | `youtube_bot_analytics` | Mongo database name. |
+| `MONGO_VIDEOS_COLLECTION` | No | `videos` | Collection for video documents. |
+| `MONGO_COMMENTS_COLLECTION` | No | `comments` | Collection for comment documents. |
 
 ## Mongo Write Strategy
 
@@ -148,7 +171,7 @@ conda run -n protoenv python -m py_compile channel_lambda/*.py video_lambda/*.py
 For the full package layout:
 
 ```bash
-conda run -n protoenv python -m py_compile channel_lambda/*.py channel_lambda/channel_job/*.py video_lambda/*.py video_lambda/video_job/*.py comment_lambda/*.py comment_lambda/comment_job/*.py
+conda run -n protoenv python -m compileall channel_lambda video_lambda comment_lambda
 ```
 
 This validates syntax without calling AWS, MongoDB, or YouTube.

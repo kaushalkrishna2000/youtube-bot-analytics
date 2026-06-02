@@ -16,6 +16,5 @@ class Settings(BaseModel):
     request_delay_ms: int
     mongo_uri: str
     mongo_db_name: str
-    mongo_channels_collection: str
     mongo_videos_collection: str
     mongo_comments_collection: str

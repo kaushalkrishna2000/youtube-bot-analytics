@@ -11,8 +11,6 @@ DEFAULT_STAGING_TTL_DAYS = 2
 DEFAULT_REQUEST_DELAY_MS = 150
 DEFAULT_MONGO_DB_NAME = "youtube_bot_analytics"
 DEFAULT_CHANNELS_COLLECTION = "channels"
-DEFAULT_VIDEOS_COLLECTION = "videos"
-DEFAULT_COMMENTS_COLLECTION = "comments"
 
 # Optional code-based channel source. Leave empty to use YOUTUBE_CHANNELS.
 # Entries can be @handles, UC... channel IDs, names, or YouTube channel URLs.
@@ -30,8 +28,6 @@ def load_settings() -> Settings:
         mongo_uri=_required("MONGO_URI"),
         mongo_db_name=_optional("MONGO_DB_NAME", DEFAULT_MONGO_DB_NAME),
         mongo_channels_collection=_optional("MONGO_CHANNELS_COLLECTION", DEFAULT_CHANNELS_COLLECTION),
-        mongo_videos_collection=_optional("MONGO_VIDEOS_COLLECTION", DEFAULT_VIDEOS_COLLECTION),
-        mongo_comments_collection=_optional("MONGO_COMMENTS_COLLECTION", DEFAULT_COMMENTS_COLLECTION),
     )
 
 
