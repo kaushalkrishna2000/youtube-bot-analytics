@@ -7,7 +7,6 @@ from typing import Any
 
 from comment_job.model import CommentStagePayload, UploadMetadata, dump_model
 from comment_job.utils.text import slug
-from comment_job.utils.time import utc_now
 
 
 def read_json_object(s3_client: Any, *, bucket: str, key: str) -> dict[str, Any]:
@@ -62,7 +61,6 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Comment
     )
 
 
-def _comment_key(prefix: str, job_id: str, channel_id: str, video_id: str) -> str:
-    """Build the date-partitioned S3 key for one comment result payload."""
-    now = utc_now()
-    return f"{prefix}/{now:%Y/%m/%d}/{job_id}/{slug(channel_id)}/{slug(video_id)}.json"
+def _comment_key(prefix: str, job_id: str, _channel_id: str, video_id: str) -> str:
+    """Build the flat S3 key for one comment result payload."""
+    return f"{prefix}/{slug(video_id)}-{slug(job_id)}.json"

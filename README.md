@@ -48,11 +48,11 @@ utils/
 
 ## S3 Prefixes
 
-| Prefix | Written by | Read by | Contents |
-| --- | --- | --- | --- |
-| `staging/channels/` | `channel_lambda` | `video_lambda` | One resolved channel payload per object. |
-| `staging/videos/` | `video_lambda` | `comment_lambda` | One video payload per object. |
-| `staging/comments/` | `comment_lambda` | Analytics/debug consumers | Final per-video comment result payload. |
+| Prefix | Key format | Written by | Read by | Contents |
+| --- | --- | --- | --- | --- |
+| `staging/channels/` | `<channel_id>-<job_id>.json` | `channel_lambda` | `video_lambda` | One resolved channel payload per object. |
+| `staging/videos/` | `<video_id>-<job_id>.json` | `video_lambda` | `comment_lambda` | One video payload per object. |
+| `staging/comments/` | `<video_id>-<job_id>.json` | `comment_lambda` | Analytics/debug consumers | Final per-video comment result payload. |
 
 Every staged object includes `created_at` and `expires_at` in the JSON body.
 The default logical TTL is two days. Configure the S3 bucket lifecycle with an

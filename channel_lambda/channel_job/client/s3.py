@@ -7,7 +7,6 @@ from typing import Any
 
 from channel_job.model import ChannelStagePayload, UploadMetadata, dump_model
 from channel_job.utils.text import slug
-from channel_job.utils.time import utc_now
 
 
 def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: ChannelStagePayload) -> UploadMetadata:
@@ -41,6 +40,5 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Channel
 
 
 def _channel_key(prefix: str, job_id: str, channel_id: str) -> str:
-    """Build the date-partitioned S3 key for one channel payload."""
-    now = utc_now()
-    return f"{prefix}/{now:%Y/%m/%d}/{job_id}/{slug(channel_id)}.json"
+    """Build the flat S3 key for one channel payload."""
+    return f"{prefix}/{slug(channel_id)}-{slug(job_id)}.json"

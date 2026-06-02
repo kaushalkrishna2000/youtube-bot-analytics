@@ -7,7 +7,6 @@ from typing import Any
 
 from video_job.model import UploadMetadata, VideoStagePayload, dump_model
 from video_job.utils.text import slug
-from video_job.utils.time import utc_now
 
 
 def read_json_object(s3_client: Any, *, bucket: str, key: str) -> dict[str, Any]:
@@ -62,7 +61,6 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: VideoSt
     )
 
 
-def _video_key(prefix: str, job_id: str, channel_id: str, video_id: str) -> str:
-    """Build the date-partitioned S3 key for one video payload."""
-    now = utc_now()
-    return f"{prefix}/{now:%Y/%m/%d}/{job_id}/{slug(channel_id)}/{slug(video_id)}.json"
+def _video_key(prefix: str, job_id: str, _channel_id: str, video_id: str) -> str:
+    """Build the flat S3 key for one video payload."""
+    return f"{prefix}/{slug(video_id)}-{slug(job_id)}.json"
