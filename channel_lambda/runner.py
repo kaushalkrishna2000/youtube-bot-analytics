@@ -67,7 +67,7 @@ def resolve_work_items(runtime: Runtime) -> list[str]:
 
 
 # -----------------------------------------------------------------------------
-# Result tracking
+# Result initialization
 # -----------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ def build_result(runtime: Runtime) -> dict[str, Any]:
 
 
 def process_work_item(runtime: Runtime, result: dict[str, Any], channel_input: str) -> None:
-    """Resolve, stage, and upsert one configured channel input.
+    """Resolve, stage to S3, and upsert to MongoDB one configured channel input.
 
     Args:
         runtime: Runtime bundle for API, S3, and Mongo access.
@@ -141,7 +141,7 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], channel_input: s
 
 
 # -----------------------------------------------------------------------------
-# Result tracking
+# Result finalization
 # -----------------------------------------------------------------------------
 
 

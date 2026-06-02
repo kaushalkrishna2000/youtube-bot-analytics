@@ -66,7 +66,7 @@ def resolve_work_items(runtime: Runtime) -> list[dict[str, str]]:
 
 
 # -----------------------------------------------------------------------------
-# Result tracking
+# Result initialization
 # -----------------------------------------------------------------------------
 
 
@@ -107,7 +107,7 @@ def build_result(runtime: Runtime) -> dict[str, Any]:
 
 
 def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str, str]) -> None:
-    """Process one video-stage S3 object into comment-stage outputs.
+    """Resolve video source, stage comments to S3, and upsert to MongoDB.
 
     Args:
         runtime: Runtime bundle for S3, YouTube, and Mongo access.
@@ -175,7 +175,7 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
 
 
 # -----------------------------------------------------------------------------
-# Result tracking
+# Result finalization
 # -----------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ def finalize_result(result: dict[str, Any]) -> dict[str, Any]:
 def build_comment_stage_payload(
     runtime: Runtime,
     source: VideoStagePayload,
-    comments: list[CommentDocument],
+    comments: list,
     *,
     comments_status: str,
     error: str | None,

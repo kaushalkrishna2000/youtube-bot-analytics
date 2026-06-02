@@ -60,7 +60,7 @@ def resolve_work_items(runtime: Runtime) -> list[dict[str, str]]:
 
 
 # -----------------------------------------------------------------------------
-# Result tracking
+# Result initialization
 # -----------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ def build_result(runtime: Runtime) -> dict[str, Any]:
 
 
 def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str, str]) -> None:
-    """Process one channel-stage S3 object into video-stage outputs.
+    """Resolve channel source, stage videos to S3, and upsert to MongoDB.
 
     Args:
         runtime: Runtime bundle for S3, YouTube, and Mongo access.
@@ -145,7 +145,7 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
 
 
 # -----------------------------------------------------------------------------
-# Result tracking
+# Result finalization
 # -----------------------------------------------------------------------------
 
 

@@ -11,6 +11,38 @@ read and easy to package as a standalone function.
 ## Runtime Flow
 
 ```mermaid
+sequenceDiagram
+    participant EB as EventBridge (Schedule)
+    participant CL as Channel Lambda
+    participant S3_C as S3: staging/channels/
+    participant VL as Video Lambda
+    participant S3_V as S3: staging/videos/
+    participant CoL as Comment Lambda
+    participant Mongo as MongoDB
+
+    Note over EB, Mongo: Daily Pipeline Execution
+
+    EB->>CL: Trigger (e.g., 00:00 UTC)
+    activate CL
+    CL->>Mongo: Upsert Channel Metadata
+    CL->>S3_C: Write ChannelStagePayload (.json)
+    deactivate CL
+
+    S3_C-->>VL: S3 ObjectCreated Event
+    activate VL
+    VL->>Mongo: Upsert Video Metadata
+    VL->>S3_V: Write VideoStagePayload (.json)
+    deactivate VL
+
+    S3_V-->>CoL: S3 ObjectCreated Event
+    activate CoL
+    CoL->>Mongo: Upsert Comment Metadata
+    CoL->>Mongo: Update Video Comment Status
+    Note right of CoL: Stages final result to S3
+    deactivate CoL
+```
+
+```mermaid
 flowchart TD
     A["EventBridge schedule: every 24 hours"] --> B["channel_lambda"]
     B --> C["S3: staging/channels/*.json"]
@@ -53,6 +85,10 @@ utils/
 | `staging/channels/` | `<channel_id>-<job_id>.json` | `channel_lambda` | `video_lambda` | One resolved channel payload per object. |
 | `staging/videos/` | `<video_id>-<job_id>.json` | `video_lambda` | `comment_lambda` | One video payload per object. |
 | `staging/comments/` | `<video_id>-<job_id>.json` | `comment_lambda` | Analytics/debug consumers | Final per-video comment result payload. |
+
+## Payload Schema
+
+The pipeline uses a versioned JSON schema for S3 objects. The current version is `2026-06-02`. Every staged object includes a `schema_version` field to allow consumers to handle evolution.
 
 Every staged object includes `created_at` and `expires_at` in the JSON body.
 The default logical TTL is two days. Configure the S3 bucket lifecycle with an
@@ -122,6 +158,67 @@ Writes are idempotent upserts:
 
 The stage always writes S3 before Mongo. If Mongo fails, the S3 object remains
 available for replay/debugging.
+
+### Pipeline Function Execution Flow
+
+The following horizontal flowchart details the execution sequence of functions across all three Lambda jobs, illustrating how they interact with external services and each other over time.
+
+```mermaid
+graph LR
+    %% Global Styling
+    classDef trigger fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef lambda fill:#69f,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef service fill:#eee,stroke:#999,stroke-dasharray: 5 5;
+
+    %% --- Channel Lambda ---
+    subgraph "Stage 1: Channel Lambda"
+        EB([EventBridge Schedule]):::trigger --> CH_H[lambda_handler]:::lambda
+        CH_H --> CH_LR[load_runtime]
+        CH_H --> CH_BR[build_result]
+        CH_H --> CH_RWI[resolve_work_items]
+        CH_RWI --> CH_Loop{Loop}
+        CH_Loop --> CH_PWI[process_work_item]
+        CH_PWI --> CH_BCSP[build_channel_stage_payload]
+        CH_PWI --> YT1[YouTube API]:::service
+        CH_PWI --> S3_C[S3: staging/channels/]:::service
+        CH_PWI --> MG1[Mongo: upsert_channel]:::service
+        CH_PWI --> CH_Loop
+        CH_Loop -- Done --> CH_FR[finalize_result]
+    end
+
+    %% --- Video Lambda ---
+    S3_C -- "ObjectCreated Event" --> VL_H[lambda_handler]:::lambda
+    subgraph "Stage 2: Video Lambda"
+        VL_H --> VL_LR[load_runtime]
+        VL_H --> VL_BR[build_result]
+        VL_H --> VL_RWI[resolve_work_items]
+        VL_RWI --> VL_Loop{Loop}
+        VL_Loop --> VL_PWI[process_work_item]
+        VL_PWI --> VL_BVSP[build_video_stage_payload]
+        VL_PWI --> YT2[YouTube API]:::service
+        VL_PWI --> S3_V[S3: staging/videos/]:::service
+        VL_PWI --> MG2[Mongo: upsert_videos]:::service
+        VL_PWI --> VL_Loop
+        VL_Loop -- Done --> VL_FR[finalize_result]
+    end
+
+    %% --- Comment Lambda ---
+    S3_V -- "ObjectCreated Event" --> CoL_H[lambda_handler]:::lambda
+    subgraph "Stage 3: Comment Lambda"
+        CoL_H --> CoL_LR[load_runtime]
+        CoL_H --> CoL_BR[build_result]
+        CoL_H --> CoL_RWI[resolve_work_items]
+        CoL_RWI --> CoL_Loop{Loop}
+        CoL_Loop --> CoL_PWI[process_work_item]
+        CoL_PWI --> CoL_BCSP[build_comment_stage_payload]
+        CoL_PWI --> YT3[YouTube API]:::service
+        CoL_PWI --> S3_Final[S3: staging/comments/]:::service
+        CoL_PWI --> MG3[Mongo: upsert_comments]:::service
+        CoL_PWI --> MG4[Mongo: update_video_comment_status]:::service
+        CoL_PWI --> CoL_Loop
+        CoL_Loop -- Done --> CoL_FR[finalize_result]
+    end
+```
 
 Pydantic models define the S3 staging payloads and Mongo document shapes inside
 each job package. Lambda code does not create indexes. Create these indexes
