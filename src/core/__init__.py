@@ -1,1 +1,1 @@
-"""Core infrastructure: Logging and Configuration."""
+"""Core runtime infrastructure for configuration, logging, and API clients."""

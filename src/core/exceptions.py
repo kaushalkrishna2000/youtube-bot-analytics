@@ -1,4 +1,4 @@
-"""Domain exceptions raised by services and handled in logic/report and logic/batch."""
+"""System-wide exceptions for the YouTube analytics tool."""
 
 
 class ChannelNotFoundError(Exception):

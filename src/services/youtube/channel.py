@@ -1,20 +1,37 @@
-"""Load target channel metadata and latest uploads with pagination."""
+"""Channel metadata and upload-list service calls.
+
+These helpers sit just above the raw YouTube API client. They resolve channel
+inputs, load channel-level fields used in ``ChannelReport``, and page through
+the uploads playlist to produce ``VideoSummary`` records for the report layer.
+Comment fetching is deliberately handled elsewhere in ``services.youtube.comment``.
+"""
 
 from __future__ import annotations
 
 import logging
 
 from core.youtube_client import YouTubeClient
-from models.records import ChannelReport, VideoSummary
+from domain.models import ChannelReport, VideoSummary
 from utils.basic_utils import parse_int_or_none
-from utils.resolver import resolve_channel_id
+from services.youtube.resolver import resolve_channel_id
 
 logger = logging.getLogger(__name__)
 _VIDEO_BATCH_SIZE = 50
 
 
 def get_channel_report(client: YouTubeClient, channel_input: str, *, delay_ms: int = 0) -> ChannelReport:
-    """Resolve channel and return channel metadata only (no comments)."""
+    """Resolve a channel input and return channel metadata only.
+
+    Args:
+        client: Authenticated YouTube API wrapper.
+        channel_input: Handle, URL, legacy path, or canonical channel ID.
+        delay_ms: Optional throttle passed through to API calls.
+
+    Returns:
+        A ``ChannelReport`` with channel metadata populated. If the resolved ID
+        is not returned by ``channels.list``, the report's ``error`` field is
+        set and no exception is raised.
+    """
     report = ChannelReport(input_raw=channel_input)
 
     channel_id = resolve_channel_id(client, channel_input)
@@ -25,6 +42,8 @@ def get_channel_report(client: YouTubeClient, channel_input: str, *, delay_ms: i
     channel_response = client.call(channel_request, delay_ms=delay_ms)
     items = channel_response.get("items", [])
     if not items:
+        # Resolution can succeed syntactically while channels.list returns no
+        # record, so carry the problem on the report for batch-level handling.
         report.error = f"Channel not found: {channel_id}"
         return report
 
@@ -41,7 +60,13 @@ def get_channel_report(client: YouTubeClient, channel_input: str, *, delay_ms: i
 
 
 def fetch_latest_videos(client: YouTubeClient, channel_id: str, *, max_videos: int = 10, delay_ms: int = 0) -> list[VideoSummary]:
-    """Fetch latest N uploaded videos for a channel using uploads-playlist pagination."""
+    """Fetch the latest uploaded videos for a channel.
+
+    YouTube exposes a channel's uploads through a generated playlist. This
+    function first discovers that playlist, pages through playlist items to
+    collect video IDs, then hydrates those IDs through ``videos.list`` so the
+    report has stable title and publish-time fields.
+    """
     if max_videos <= 0:
         return []
     logger.info("Fetching latest %s video(s) for channel %s", max_videos, channel_id)
@@ -61,6 +86,8 @@ def fetch_latest_videos(client: YouTubeClient, channel_id: str, *, max_videos: i
     next_page_token: str | None = None
 
     while len(video_ids) < max_videos:
+        # playlistItems.list accepts up to 50 IDs per page; stop as soon as the
+        # requested max is satisfied even if the API has more pages.
         page_size = min(50, max_videos - len(video_ids))
         playlist_request = client.service.playlistItems().list(
             part="contentDetails",
@@ -88,6 +115,8 @@ def fetch_latest_videos(client: YouTubeClient, channel_id: str, *, max_videos: i
 
     summaries: list[VideoSummary] = []
     for start in range(0, len(video_ids), _VIDEO_BATCH_SIZE):
+        # Hydrate in the same order the playlist returned IDs. Missing video
+        # snippets still produce a summary shell so output cardinality is stable.
         batch_ids = video_ids[start : start + _VIDEO_BATCH_SIZE]
         logger.info("Hydrating video metadata batch: %s video(s)", len(batch_ids))
         request = client.service.videos().list(part="snippet", id=",".join(batch_ids))

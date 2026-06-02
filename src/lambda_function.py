@@ -1,4 +1,10 @@
-"""AWS Lambda entrypoint for channel batch fetch (lightweight wrapper)."""
+"""AWS Lambda entrypoint for the YouTube batch fetch job.
+
+The handler keeps Lambda-specific concerns at the edge: channel input selection,
+S3 destination validation, response status codes, and upload error handling.
+Actual fetching is delegated to ``runner.run_fetch_job`` so the same
+runner can be exercised locally or by tests without AWS event plumbing.
+"""
 
 from __future__ import annotations
 
@@ -6,52 +12,45 @@ import logging
 import os
 from typing import Any
 
-from core.config import get_s3_output_config
-from export.s3_output import upload_fetch_result_json
-from lambda_runner import build_lambda_response, run_fetch_job
-from utils.basic_utils import normalize_nonempty_str_list
+from core.config import get_configured_channels, get_s3_output_config
+from services.storage.s3 import upload_fetch_result_json
+from runner import run_fetch_job
+from utils.responses import build_lambda_response
 
 logger = logging.getLogger(__name__)
 
-# Optional direct in-code channel list. If empty, YOUTUBE_CHANNELS is used.
-DEFAULT_CHANNELS: list[str] = []
-
-
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-    # event is intentionally unused; context contributes the AWS request id for S3 object names.
+    """Run one fetch invocation and upload the full result to S3.
+
+    Args:
+        event: Currently unused. Kept for AWS Lambda handler compatibility.
+        context: AWS Lambda context. ``aws_request_id`` is used as part of the
+            S3 object key when available.
+
+    Returns:
+        API Gateway-style response envelope with a JSON string body. The full
+        report payload is uploaded to S3; the response only includes summary,
+        failures, resolved config, and upload metadata.
+    """
+    # event is intentionally unused; context contributes the AWS request id for immutable S3 object names and easier CloudWatch/S3 correlation.
     request_id = getattr(context, "aws_request_id", None)
     logger.info("Lambda fetch invocation started request_id=%s", request_id or "unavailable")
 
-    if DEFAULT_CHANNELS:
-        logger.info("Resolving channels from DEFAULT_CHANNELS")
-        channels = normalize_nonempty_str_list(DEFAULT_CHANNELS)
-    else:
-        logger.info("Resolving channels from YOUTUBE_CHANNELS env var")
-        raw_env = os.getenv("YOUTUBE_CHANNELS", "")
-        channels = normalize_nonempty_str_list(raw_env.split(",")) if raw_env.strip() else []
+    channels = get_configured_channels()
 
     logger.info("Resolved %s channel input(s)", len(channels))
     if not channels:
         logger.info("Lambda fetch returning 400: no channels configured")
-        return build_lambda_response(
-            400,
-            {
-                "ok": False,
-                "error": "No channels configured. Set DEFAULT_CHANNELS in code or YOUTUBE_CHANNELS env var.",
-            },
-        )
+        return build_lambda_response(400,{ "ok": False, "error": "No channels configured. Set YOUTUBE_CHANNELS env var."} )
 
     try:
         bucket, prefix = get_s3_output_config()
     except ValueError as exc:
+        # Without an output bucket, running the fetch would produce data the
+        # Lambda cannot persist. Fail before spending YouTube API quota.
         logger.info("Lambda fetch returning 500: S3 output config error: %s", exc)
-        return build_lambda_response(
-            500,
-            {
-                "ok": False,
-                "error": str(exc),
-            },
-        )
+        return build_lambda_response(500,{  "ok": False, "error": str(exc) } )
+
     logger.info("Resolved S3 output destination bucket=%s prefix=%s", bucket, prefix)
 
     logger.info("Starting fetch job for %s channel input(s)", len(channels))
@@ -62,6 +61,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         logger.info("Starting S3 upload for fetch result request_id=%s", request_id or "unavailable")
         upload = upload_fetch_result_json(result, bucket, prefix, str(request_id) if request_id else None)
     except Exception as exc:
+        # Return the fetch summary even when persistence fails; it is useful for operators debugging whether the YouTube side succeeded.
         logger.info("Lambda fetch returning 500: S3 upload failed: %s", exc)
         return build_lambda_response(
             500,
@@ -76,6 +76,7 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
         )
     logger.info("S3 upload completed s3_uri=%s size_bytes=%s", upload.get("s3_uri"), upload.get("size_bytes"))
 
+    # Keep Lambda responses compact. Large nested reports live in the uploaded S3 object and are intentionally excluded from the response body.
     payload = {
         "ok": result.get("ok", False),
         "summary": result.get("summary", {}),

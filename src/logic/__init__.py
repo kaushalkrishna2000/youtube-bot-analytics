@@ -1,1 +1,1 @@
-"""Orchestration logic: Batch processing and Report generation."""
+"""Report orchestration layers that turn service calls into domain records."""

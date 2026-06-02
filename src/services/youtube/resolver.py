@@ -1,5 +1,4 @@
-"""
-Normalize user channel input to a UC... channel ID.
+"""Normalize user channel input to a canonical ``UC...`` channel ID.
 
 Resolution order: bare UC id (no API) → @handle → YouTube URL → legacy /c/ or /user/
 paths. Raises ChannelNotFoundError when the API returns no matching channel.
@@ -12,7 +11,7 @@ import re
 from urllib.parse import urlparse
 
 from core.youtube_client import YouTubeClient
-from models.exceptions import ChannelNotFoundError
+from core.exceptions import ChannelNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +19,15 @@ logger = logging.getLogger(__name__)
 CHANNEL_ID_RE = re.compile(r"^UC[\w-]{22}$")
 HANDLE_RE = re.compile(r"^@([\w.-]+)$", re.IGNORECASE)
 
+
 def resolve_channel_id(client: YouTubeClient, channel_input: str) -> str:
-    """Resolve a channel URL, @handle, or UC... id to a channel ID."""
+    """Resolve supported channel input forms into a canonical channel ID.
+
+    Supported inputs include raw ``UC...`` IDs, ``@handles``, YouTube channel
+    URLs, and legacy ``/c/`` or ``/user/`` paths. Unknown or unresolvable inputs
+    raise ``ChannelNotFoundError`` for the report layer to convert into an
+    error-only channel report.
+    """
     raw = channel_input.strip()
 
     if CHANNEL_ID_RE.match(raw):
@@ -69,6 +75,7 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str) -> str:
 
 
 def _resolve_by_handle(client: YouTubeClient, handle: str) -> str:
+    """Resolve a modern YouTube handle through ``channels.list(forHandle=...)``."""
     # Step 1: build request. Step 2: client.call() runs .execute() on the network.
     request = client.service.channels().list(part="id", forHandle=handle)
     response = client.call(request)
@@ -79,6 +86,7 @@ def _resolve_by_handle(client: YouTubeClient, handle: str) -> str:
 
 
 def _resolve_legacy(client: YouTubeClient, kind: str, name: str) -> str:
+    """Resolve legacy ``/user/`` or ``/c/`` URL paths to channel IDs."""
     # Pre-handle era: /user/USERNAME uses forUsername; /c/ often maps to a custom slug.
     if kind == "user":
         request = client.service.channels().list(part="id", forUsername=name)
@@ -92,7 +100,7 @@ def _resolve_legacy(client: YouTubeClient, kind: str, name: str) -> str:
 
 
 def _extract_from_url(raw: str) -> str | None:
-    """Return channel id or handle token from a YouTube URL."""
+    """Return a channel ID, handle token, or legacy marker from a YouTube URL."""
     parsed = urlparse(raw.strip())
     path = parsed.path.strip("/")
 

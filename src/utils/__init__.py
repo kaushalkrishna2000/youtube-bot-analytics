@@ -1,4 +1,4 @@
-"""Shared utils."""
+"""Shared normalization helpers re-exported for package-level imports."""
 
 from utils.basic_utils import (
     coerce_int_with_min,
