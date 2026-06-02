@@ -27,6 +27,7 @@ MANIFEST
 venv/
 ENV/
 env/
+protoenv/
 
 # Testing & type checking
 .pytest_cache/
@@ -47,10 +48,14 @@ dmypy.json
 !.env.example
 *.pem
 *.key
+*.crt
+*.p12
 
 # Google / YouTube API
-src/credentials/*
-!src/credentials/.env.example
+credentials/*
+*/credentials/*
+!credentials/.env.example
+!*/credentials/.env.example
 **/client_secret*.json
 **/token.json
 **/token.pickle
@@ -88,6 +93,15 @@ data/
 *.csv
 *.sqlite
 *.db
+
+# --- AWS Lambda packaging / local builds ---
+layer.zip
+function.zip
+package.zip
+python/
+.aws-sam/
+.serverless/
+*.zip
 
 # --- Jupyter (if used) ---
 .ipynb_checkpoints/

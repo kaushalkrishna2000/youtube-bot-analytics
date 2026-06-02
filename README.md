@@ -1,93 +1,154 @@
-# YouTube Bot Analytics (Lambda Batch Fetch)
+# YouTube Bot Analytics Staged Lambda Pipeline
 
-This branch is a Lambda-only batch fetch implementation for YouTube channel analytics.
+This branch splits the previous bundled fetch job into three independent AWS
+Lambda folders. Each Lambda has a root handler, a task-based `runner.py`, and a
+local support package. The runner owns payload formation, YouTube API work, S3
+staging writes, and Mongo document shaping.
 
-The Lambda resolves configured channel inputs, fetches channel/video/comment data from the YouTube API, writes the full fetched JSON payload to S3, and returns a compact Lambda response with summary and upload metadata.
+There is no shared package on purpose. Duplication keeps each Lambda easy to
+read and easy to package as a standalone function.
 
-## What This Branch Does
-
-- Runs through AWS Lambda handler `lambda_function.lambda_handler`.
-- Accepts channel inputs from the `YOUTUBE_CHANNELS` environment variable.
-- Fetches channel metadata, latest videos, top-level comments, and commenter channel enrichment.
-- Writes the full runner payload to S3 as immutable UTF-8 JSON.
-- Returns a compact response containing status, summary, failures, config, and S3 upload metadata.
-- Emits INFO logs for Lambda flow, fetch progress, S3 upload, and response paths.
-
-## Source Module Map
-
-The code is organized around one Lambda fetch pipeline:
-
- Area | Files | Responsibility |
- --- | --- | --- |
- Lambda edge | `src/lambda_function.py` | Resolves channel inputs, validates S3 output config, runs the fetch job, and returns a compact response. |
- Runner | `src/runner.py` | Validates runtime options, configures logging, initializes the YouTube client, and builds the JSON-safe result payload. |
- Core | `src/core/` | Loads environment config, sets up logging, and wraps the YouTube API client. |
- Logic | `src/logic/` | Coordinates batch processing and builds channel/video reports. |
- Services | `src/services/` | Calls YouTube APIs (`youtube/`) and handles S3 uploads (`storage/s3.py`). |
- Domain | `src/domain/` | Defines report dataclasses (`models.py`) and status literals. |
- Utilities | `src/utils/` | Normalizes user input, environment lists, and API responses. |
-
-## Configuration
-
-Lambda environment variables used by this fetch job:
-
- Variable | Required | Default | Description |
- --- | --- | --- | --- |
- `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. |
- `FETCH_OUTPUT_S3_BUCKET` | Yes | None | S3 bucket for the JSON payload. |
- `YOUTUBE_CHANNELS` | Yes | None | Comma-separated channel handles, IDs, or URLs. |
- `FETCH_OUTPUT_S3_PREFIX` | No | `fetch_runs` | S3 key prefix. |
- `YOUTUBE_REQUEST_DELAY_MS` | No | `150` | Delay in ms between API requests. |
- `YOUTUBE_VIDEO_WORKERS` | No | `1` | Concurrent video processing workers per channel. |
-
-Example:
-```bash
-export YOUTUBE_API_KEY="your_api_key_here"
-export YOUTUBE_CHANNELS="@HombaleFilms,@MrBeast,UCX6OQ3DkcsbYNE6H8uQQuVA"
-export FETCH_OUTPUT_S3_BUCKET="your-output-bucket"
-```
-
-## Complete Runtime Flow
+## Runtime Flow
 
 ```mermaid
 flowchart TD
-    A["Lambda invoked: lambda_handler"] --> B["Read request_id from context"]
-    B --> E["Read YOUTUBE_CHANNELS env var"]
-    E --> F["Normalize channel list"]
-    F --> G{"Any valid channels?"}
-    G -- "No" --> H["Return 400: no channels configured"]
+    A["EventBridge schedule: every 24 hours"] --> B["channel_lambda"]
+    B --> C["S3: staging/channels/*.json"]
+    C --> D["video_lambda"]
+    D --> E["S3: staging/videos/*.json"]
+    E --> F["comment_lambda"]
+    F --> G["S3: staging/comments/*.json"]
 
-    G -- "Yes" --> I["Resolve S3 output config"]
-    I --> J{"S3 Bucket configured?"}
-    J -- "No" --> K["Return 500: S3 config error"]
-    J -- "Yes" --> L["Run fetch job via runner.py"]
-
-    L --> M["Initialize YouTube client"]
-    M --> N{"API key present?"}
-    N -- "No" --> O["Build failed runner payload"]
-    N -- "Yes" --> P["Run channel batch"]
-
-    P --> Q["Fetch Channel/Video/Comment data"]
-    Q --> R["Collect reports and failures"]
-    R --> S["Serialize payload to JSON"]
-    S --> T["Upload to S3"]
-    T --> U{"Upload success?"}
-    U -- "No" --> V["Return 500 + Partial Summary"]
-    U -- "Yes" --> W["Return 200 Compact Response"]
+    B --> H["Mongo channels upsert"]
+    D --> I["Mongo videos upsert"]
+    F --> J["Mongo comments upsert"]
+    F --> K["Mongo video comment status update"]
 ```
 
-## Deployment Notes
+The S3 staging objects are the durable handoff between Lambdas. The pipeline
+uses one JSON object per unit of work so S3 triggers can fan out into short,
+retryable invocations.
 
-1.  **Dependencies**: Listed in `requirements.txt`.
-2.  **Handler**: Set to `lambda_function.lambda_handler`.
-3.  **Permissions**: Lambda role must have `s3:PutObject` for the target bucket.
-4.  **Layer Construction**:
-    ```bash
-    mkdir -p python
-    pip install -r requirements.txt -t python/
-    zip -r layer.zip python
-    ```
+## Folder Map
 
-## Companion Mongo Ingest Lambda
+| Folder | Handler | Trigger | Responsibility |
+| --- | --- | --- | --- |
+| `channel_lambda/` | `lambda_function.lambda_handler` | EventBridge schedule | `lambda_function.py` calls task functions in `runner.py`; `channel_job/` contains local config, models, S3, Mongo, YouTube, logging, and utility modules. |
+| `video_lambda/` | `lambda_function.lambda_handler` | S3 `ObjectCreated` on `staging/channels/` | `lambda_function.py` calls task functions in `runner.py`; `video_job/` contains local config, models, S3, Mongo, YouTube, logging, and utility modules. |
+| `comment_lambda/` | `lambda_function.lambda_handler` | S3 `ObjectCreated` on `staging/videos/` | `lambda_function.py` calls task functions in `runner.py`; `comment_job/` contains local config, models, S3, Mongo, YouTube, logging, and utility modules. |
 
-The fetch Lambda is designed to trigger a companion ingest Lambda (in a separate branch/repository) via S3 `ObjectCreated` events. The fetcher remains focused on data retrieval and immutable storage, while the ingestor handles database synchronization.
+Each local job package contains:
+
+```text
+config.py
+logging_config.py
+models.py
+mongo_writer_client.py
+resolver.py
+s3_stager.py
+youtube_client.py
+basic_utils.py
+```
+
+## S3 Prefixes
+
+| Prefix | Written by | Read by | Contents |
+| --- | --- | --- | --- |
+| `staging/channels/` | `channel_lambda` | `video_lambda` | One resolved channel payload per object. |
+| `staging/videos/` | `video_lambda` | `comment_lambda` | One video payload per object. |
+| `staging/comments/` | `comment_lambda` | Analytics/debug consumers | Final per-video comment result payload. |
+
+Every staged object includes `created_at` and `expires_at` in the JSON body.
+The default logical TTL is two days. Configure the S3 bucket lifecycle with an
+expiration rule of `Days=2` for the `staging/` prefix to remove old staging
+objects automatically.
+
+## Environment Variables
+
+| Env name | Required | Default | Description |
+| --- | --- | --- | --- |
+| `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. Required by all three Lambdas. |
+| `PIPELINE_S3_BUCKET` | Yes | None | Bucket used for all staging prefixes. Required by all three Lambdas. |
+| `MONGO_URI` | Yes | None | MongoDB connection string. Required by all three Lambdas. |
+| `YOUTUBE_CHANNELS` | No | `CODE_CHANNELS` in `channel_lambda/channel_job/config.py` | Comma-separated channel handles, channel IDs, names, or YouTube channel URLs for `channel_lambda`. When set, this env var is used instead of `CODE_CHANNELS`. |
+| `CHANNEL_STAGE_PREFIX` | No | `staging/channels` | Prefix for channel-stage objects written by `channel_lambda`. |
+| `VIDEO_STAGE_PREFIX` | No | `staging/videos` | Prefix for video-stage objects written by `video_lambda`. |
+| `COMMENT_STAGE_PREFIX` | No | `staging/comments` | Prefix for comment-stage objects written by `comment_lambda`. |
+| `STAGING_TTL_DAYS` | No | `2` | Logical TTL added to staged payloads and S3 metadata. |
+| `YOUTUBE_MAX_VIDEOS` | No | `20` | Max latest videos fetched per channel by `video_lambda`. |
+| `YOUTUBE_MAX_COMMENTS` | No | `2000` | Max top-level comments fetched per video by `comment_lambda`. |
+| `YOUTUBE_REQUEST_DELAY_MS` | No | `150` | Delay after each YouTube API call. |
+| `LOG_LEVEL` | No | `INFO` | Logging level for each Lambda. Supports standard Python levels such as `DEBUG`, `INFO`, `WARNING`, and `ERROR`. |
+| `MONGO_DB_NAME` | No | `youtube_bot_analytics` | Mongo database name. |
+| `MONGO_CHANNELS_COLLECTION` | No | `channels` | Collection for channel documents. |
+| `MONGO_VIDEOS_COLLECTION` | No | `videos` | Collection for video documents. |
+| `MONGO_COMMENTS_COLLECTION` | No | `comments` | Collection for comment documents. |
+
+Leave `CODE_CHANNELS` empty when the channel list should come only from Lambda
+environment variables.
+
+## Mongo Write Strategy
+
+Writes are idempotent upserts:
+
+| Collection | Upsert key |
+| --- | --- |
+| Channels | `channel_id` |
+| Videos | `video_id` |
+| Comments | `comment_id` |
+
+The stage always writes S3 before Mongo. If Mongo fails, the S3 object remains
+available for replay/debugging.
+
+Pydantic models define the S3 staging payloads and Mongo document shapes inside
+each job package. Lambda code does not create indexes. Create these indexes
+manually before production traffic:
+
+```javascript
+db.channels.createIndex({ channel_id: 1 }, { unique: true })
+db.videos.createIndex({ video_id: 1 }, { unique: true })
+db.videos.createIndex({ channel_id: 1, published_at: -1 })
+db.comments.createIndex({ comment_id: 1 }, { unique: true })
+db.comments.createIndex({ video_id: 1 })
+db.comments.createIndex({ channel_id: 1, comment_published_at: -1 })
+```
+
+## Packaging
+
+Build one dependency layer from the root requirements:
+
+```bash
+mkdir -p python
+conda run -n protoenv pip install -r requirements.txt -t python/
+zip -r layer.zip python
+```
+
+Package each Lambda folder independently:
+
+```bash
+cd channel_lambda && zip -r ../channel_lambda.zip .
+cd ../video_lambda && zip -r ../video_lambda.zip .
+cd ../comment_lambda && zip -r ../comment_lambda.zip .
+```
+
+Set each function handler to:
+
+```text
+lambda_function.lambda_handler
+```
+
+## Local Validation
+
+Use the project Anaconda environment:
+
+```bash
+conda run -n protoenv python -m py_compile channel_lambda/*.py video_lambda/*.py comment_lambda/*.py
+```
+
+For the full package layout:
+
+```bash
+conda run -n protoenv python -m py_compile channel_lambda/*.py channel_lambda/channel_job/*.py video_lambda/*.py video_lambda/video_job/*.py comment_lambda/*.py comment_lambda/comment_job/*.py
+```
+
+This validates syntax without calling AWS, MongoDB, or YouTube.
