@@ -251,9 +251,9 @@ graph TD
 ### Legend
 | Color | Client / Service |
 | :--- | :--- |
-| <span style="color:#f96">●</span> | **YouTube Data API** (Data retrieval) |
-| <span style="color:#69f">●</span> | **Amazon S3** (Staging & Event Triggers) |
-| <span style="color:#4db33d">●</span> | **MongoDB** (Final Metadata Persistence) |
+| 🟠 | **YouTube Data API** (Data retrieval) |
+| 🔵 | **Amazon S3** (Staging & Event Triggers) |
+| 🟢 | **MongoDB** (Final Metadata Persistence) |
 
 ## Lambda Comparison & Processing Strategies
 

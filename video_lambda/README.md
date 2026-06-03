@@ -32,9 +32,9 @@ graph LR
 ### Legend
 | Icon/Color | Client | Description |
 | :--- | :--- | :--- |
-| <span style="color:#f96">●</span> | **YouTube** | Data retrieval via YouTube Data API |
-| <span style="color:#69f">●</span> | **S3** | Staging payload read/write |
-| <span style="color:#4db33d">●</span> | **MongoDB** | Batch video metadata persistence |
+| 🟠 | **YouTube** | Data retrieval via YouTube Data API |
+| 🔵 | **S3** | Staging payload read/write |
+| 🟢 | **MongoDB** | Batch video metadata persistence |
 
 ## Responsibility
 

@@ -33,9 +33,9 @@ graph LR
 ### Legend
 | Icon/Color | Client | Description |
 | :--- | :--- | :--- |
-| <span style="color:#f96">●</span> | **YouTube** | Data retrieval and enrichment |
-| <span style="color:#69f">●</span> | **S3** | Payload read/write |
-| <span style="color:#4db33d">●</span> | **MongoDB** | Comment and video status persistence |
+| 🟠 | **YouTube** | Data retrieval and enrichment |
+| 🔵 | **S3** | Payload read/write |
+| 🟢 | **MongoDB** | Comment and video status persistence |
 
 ## Responsibility
 
