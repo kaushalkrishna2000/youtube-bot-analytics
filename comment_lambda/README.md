@@ -22,7 +22,7 @@ graph LR
     MW2 --> Loop
     
     %% Termination path at the bottom
-    Loop -- Done ----> FR[finalize_result]
+    Loop ---- Done ----> FR[finalize_result]
     FR --> End([Return Result])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -82,7 +82,7 @@ sequenceDiagram
 ```
 
 ```mermaid
-flowchart TD
+flowchart LR
     Start([Start]) --> LoadRuntime[Load Runtime & Clients]
     LoadRuntime --> ResolveRefs[Extract S3 Bucket/Key from Event]
     ResolveRefs --> ForEachRef{For Each S3 Ref}
@@ -102,7 +102,7 @@ flowchart TD
     UpdateVideo --> ForEachRef
 
     %% Termination path
-    ForEachRef -- No more refs ----> Finalize[Finalize & Return Result]
+    ForEachRef ---- No more refs ----> Finalize[Finalize & Return Result]
     Finalize --> End([End])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;

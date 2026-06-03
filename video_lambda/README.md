@@ -20,7 +20,7 @@ graph LR
     WS3 --> Loop
     
     %% Termination path at the bottom
-    Loop -- Done ----> MW[Mongo: upsert_videos]:::mongodb
+    Loop ---- Done ----> MW[Mongo: upsert_videos]:::mongodb
     MW --> FR[finalize_result]
     FR --> End([Return Result])
 
@@ -90,11 +90,11 @@ flowchart TD
     BuildPayload --> UploadS3[Upload to S3 staging/videos/]:::s3
     UploadS3 --> ForEachVideo
     
-    ForEachVideo -- Done --> UpsertMongo[Bulk Upsert Videos to MongoDB]:::mongodb
+    ForEachVideo ---- Done ----> UpsertMongo[Bulk Upsert Videos to MongoDB]:::mongodb
     UpsertMongo --> ForEachRef
-
+    
     %% Termination path
-    ForEachRef -- No more refs ----> Finalize[Finalize & Return Result]
+    ForEachRef ---- No more refs ----> Finalize[Finalize & Return Result]
     Finalize --> End([End])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;

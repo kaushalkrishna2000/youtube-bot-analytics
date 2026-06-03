@@ -19,7 +19,7 @@ graph LR
     MW --> Loop
     
     %% Termination path at the bottom
-    Loop -- Done ----> FR[finalize_result]
+    Loop ---- Done ----> FR[finalize_result]
     FR --> End([Return Result])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -74,7 +74,7 @@ sequenceDiagram
 ```
 
 ```mermaid
-flowchart TD
+flowchart LR
     Start([Start]) --> LoadRuntime[Load Runtime & Config]
     LoadRuntime --> ResolveItems[Resolve & Normalize Channel Inputs]
     ResolveItems --> ForEachChannel{For Each Channel}
@@ -87,7 +87,7 @@ flowchart TD
     UpsertMongo --> ForEachChannel
 
     %% Termination path
-    ForEachChannel -- No more items ----> Finalize[Finalize & Return Result]
+    ForEachChannel ---- No more items ----> Finalize[Finalize & Return Result]
     Finalize --> End([End])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;

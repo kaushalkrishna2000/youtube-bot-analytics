@@ -182,10 +182,10 @@ original string format in the JSON payload and S3 objects.
 
 ### Pipeline Function Execution Flow
 
-The following horizontal flowchart details the execution sequence of functions across all three Lambda jobs, illustrating how they interact with external services and each other over time.
+The following vertical flowchart details the execution sequence of functions across all three Lambda jobs, illustrating how they interact with external services and each other over time.
 
 ```mermaid
-graph LR
+graph TD
     %% Global Styling
     classDef trigger fill:#f9f,stroke:#333,stroke-width:2px;
     classDef lambda fill:#69f,stroke:#fff,stroke-width:2px,color:#fff;
@@ -204,7 +204,7 @@ graph LR
         MG1 --> CH_Loop
         
         %% Termination path at the bottom
-        CH_Loop -- Done ----> CH_FR[finalize_result]
+        CH_Loop ---- Done ----> CH_FR[finalize_result]
     end
 
     %% --- Video Lambda ---
@@ -221,7 +221,7 @@ graph LR
         S3_V --> VL_Loop
         
         %% Termination path at the bottom
-        VL_Loop -- Done ----> MG2[Mongo: upsert_videos]:::mongodb
+        VL_Loop ---- Done ----> MG2[Mongo: upsert_videos]:::mongodb
         MG2 --> VL_FR[finalize_result]
     end
 
@@ -240,7 +240,7 @@ graph LR
         MG4 --> CoL_Loop
         
         %% Termination path at the bottom
-        CoL_Loop -- Done ----> CoL_FR[finalize_result]
+        CoL_Loop ---- Done ----> CoL_FR[finalize_result]
     end
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
