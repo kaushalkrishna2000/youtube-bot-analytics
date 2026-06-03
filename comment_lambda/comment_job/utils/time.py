@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 
 
 def utc_now() -> datetime:
-    """Return the current timezone-aware UTC datetime."""
+
+    # Return the current date and time with UTC timezone awareness
     return datetime.now(timezone.utc)
 
 
 def utc_iso(value: datetime) -> str:
-    """Format a datetime as an ISO-8601 UTC string ending in ``Z``."""
+
+    # Convert the datetime to ISO format and replace the UTC offset with Z
     return value.isoformat().replace("+00:00", "Z")

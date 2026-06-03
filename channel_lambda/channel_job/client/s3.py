@@ -10,19 +10,14 @@ from channel_job.utils.text import slug
 
 
 def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: ChannelStagePayload) -> UploadMetadata:
-    """Write a channel-stage payload as compact JSON to S3.
 
-    Args:
-        s3_client: Boto3 S3 client or compatible test double.
-        bucket: Destination bucket name.
-        prefix: Destination key prefix without a trailing slash requirement.
-        payload: Channel-stage payload to serialize.
-
-    Returns:
-        Metadata describing the uploaded S3 object.
-    """
+    # Build the unique S3 key for this channel payload
     key = _channel_key(prefix, payload.job_id, payload.channel.channel_id)
+
+    # Serialize the payload to a compact JSON byte string
     body = json.dumps(dump_model(payload), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+    # Upload the JSON object to S3 with associated metadata
     response = s3_client.put_object(
         Bucket=bucket,
         Key=key,
@@ -30,6 +25,8 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Channel
         ContentType="application/json",
         Metadata={"stage": payload.stage, "job_id": payload.job_id, "expires_at": payload.expires_at},
     )
+
+    # Return structured metadata about the uploaded object
     return UploadMetadata(
         bucket=bucket,
         key=key,
@@ -40,5 +37,6 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Channel
 
 
 def _channel_key(prefix: str, job_id: str, channel_id: str) -> str:
-    """Build the flat S3 key for one channel payload."""
+
+    # Combine prefix, channel ID, and job ID into a slugified key
     return f"{prefix}/{slug(channel_id)}-{slug(job_id)}.json"

@@ -6,41 +6,57 @@ import os
 
 
 def _required(name: str) -> str:
-    """Read and validate a required environment variable.
 
-    Args:
-        name: Environment variable name.
-
-    Returns:
-        Trimmed environment value.
-
-    Raises:
-        ValueError: If the environment variable is missing or blank.
-    """
+    # Read the environment variable and remove any leading or trailing whitespace
     value = os.getenv(name, "").strip()
+
+    # Validate that the environment variable is present and not blank
     if not value:
+
+        # Raise an error if a mandatory configuration value is missing
         raise ValueError(f"Missing required environment variable: {name}")
+
+    # Return the cleaned environment variable value
     return value
 
 
 def _optional(name: str, default: str) -> str:
-    """Read an optional environment variable with a string default."""
+
+    # Return the environment variable value if present, otherwise use the default string
     return os.getenv(name, default).strip() or default
 
 
 def _prefix(name: str, default: str) -> str:
-    """Read an S3 prefix environment variable without leading/trailing slashes."""
+
+    # Read the environment variable and strip both whitespace and slashes
     value = os.getenv(name, default).strip().strip("/")
+
+    # Return the sanitized prefix or fallback to the default
     return value or default
 
 
 def _int_env(name: str, default: int, *, minimum: int) -> int:
-    """Read an integer environment variable with fallback and minimum bounds."""
+
+    # Extract the raw environment variable value and remove whitespace
     raw = os.getenv(name, "").strip()
+
+    # Use the default value if the environment variable is not set
     if not raw:
+
+        # No custom configuration provided
         return default
+
+    # Attempt to convert the raw string to an integer
     try:
+
+        # Parse the string into an integer value
         value = int(raw)
-    except ValueError:
+
+    # Revert to the default value if the string is not a valid integer
+    except (ValueError, TypeError):
+
+        # Invalid numeric format encountered
         return default
+
+    # Ensure the returned value meets the specified minimum bound
     return max(value, minimum)

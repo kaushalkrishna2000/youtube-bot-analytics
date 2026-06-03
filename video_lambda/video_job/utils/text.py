@@ -6,5 +6,6 @@ import re
 
 
 def slug(value: str) -> str:
-    """Convert a value into a safe S3 key segment."""
+
+    # Replace any non-alphanumeric characters with hyphens and strip excess hyphens
     return re.sub(r"[^A-Za-z0-9_.=-]+", "-", value).strip("-") or "unknown"

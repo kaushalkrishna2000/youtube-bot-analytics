@@ -11,58 +11,58 @@ class MongoWriter:
     """Writes comment-stage documents and video comment status to MongoDB."""
 
     def __init__(self, settings: Settings) -> None:
-        """Open MongoDB collections using Lambda settings.
 
-        Args:
-            settings: Loaded comment Lambda settings with Mongo connection
-                details.
-        """
+        # Connect to the MongoDB server using the provided URI
         self._client = MongoClient(settings.mongo_uri)
+
+        # Select the target database from the client
         db = self._client[settings.mongo_db_name]
+
+        # Initialize the videos collection reference
         self._videos = db[settings.mongo_videos_collection]
+
+        # Initialize the comments collection reference
         self._comments = db[settings.mongo_comments_collection]
 
     def close(self) -> None:
-        """Close the underlying MongoDB client."""
+
+        # Close the underlying MongoDB client connection
         self._client.close()
 
     def upsert_comments(self, comments: list[CommentDocument]) -> int:
-        """Upsert comment documents by ``comment_id``.
 
-        Args:
-            comments: Comment documents to write.
-
-        Returns:
-            Number of inserted or modified MongoDB documents.
-        """
+        # Initialize a list to hold bulk update operations
         operations: list[UpdateOne] = []
+
+        # Iterate through the provided comment documents
         for comment in comments:
+
+            # Create an upsert operation matching by comment ID
             operations.append(UpdateOne({"comment_id": comment.comment_id}, {"$set": dump_model(comment)}, upsert=True))
 
+        # Return zero if no operations were created
         if not operations:
+
+            # No comments to update
             return 0
-        # Unordered bulk writes keep independent comment updates moving even if
-        # MongoDB has to handle one operation differently.
+
+        # Execute the bulk write operation in an unordered fashion
         result = self._comments.bulk_write(operations, ordered=False)
+
+        # Return the sum of inserted and modified document counts
         return result.upserted_count + result.modified_count
 
     def update_video_comment_status(self, video_id: str, *, comments_status: str, comments_fetched: int, error: str | None) -> int:
-        """Persist the comment-fetch outcome on the parent video document.
 
-        Args:
-            video_id: YouTube video ID to update.
-            comments_status: Fetch status recorded by the comment resolver.
-            comments_fetched: Number of comments fetched for the video.
-            error: Optional error message for disabled or failed comments.
-
-        Returns:
-            ``1`` when MongoDB inserted or modified the video status, otherwise
-            ``0``.
-        """
+        # Prepare the status update payload for the video
         update = {
             "comments_status": comments_status,
             "comments_fetched": comments_fetched,
             "comments_error": error,
         }
+
+        # Perform the update on the video document matching by ID
         result = self._videos.update_one({"video_id": video_id}, {"$set": update}, upsert=True)
+
+        # Return 1 if a document was affected, otherwise 0
         return int(result.upserted_id is not None or result.modified_count > 0)

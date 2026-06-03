@@ -10,41 +10,35 @@ from video_job.utils.text import slug
 
 
 def read_json_object(s3_client: Any, *, bucket: str, key: str) -> dict[str, Any]:
-    """Read a staged JSON object from S3.
 
-    Args:
-        s3_client: Boto3 S3 client or compatible test double.
-        bucket: Source bucket name.
-        key: Source object key.
-
-    Returns:
-        Decoded JSON object.
-
-    Raises:
-        ValueError: If the staged payload is not a JSON object.
-    """
+    # Retrieve the object from S3 using the provided bucket and key
     response = s3_client.get_object(Bucket=bucket, Key=key)
+
+    # Read the object body content into memory
     body = response["Body"].read()
+
+    # Decode the byte string to UTF-8 and parse as a JSON object
     data = json.loads(body.decode("utf-8"))
+
+    # Validate that the parsed data is a dictionary
     if not isinstance(data, dict):
+
+        # Raise an error if the payload structure is unexpected
         raise ValueError("Staged S3 payload must be a JSON object")
+
+    # Return the parsed JSON dictionary
     return data
 
 
 def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: VideoStagePayload) -> UploadMetadata:
-    """Write a video-stage payload as compact JSON to S3.
 
-    Args:
-        s3_client: Boto3 S3 client or compatible test double.
-        bucket: Destination bucket name.
-        prefix: Destination key prefix without a trailing slash requirement.
-        payload: Video-stage payload to serialize.
-
-    Returns:
-        Metadata describing the uploaded S3 object.
-    """
+    # Build the unique S3 key for this video payload
     key = _video_key(prefix, payload.job_id, payload.channel.channel_id, payload.video.video_id)
+
+    # Serialize the payload to a compact JSON byte string
     body = json.dumps(dump_model(payload), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+    # Upload the JSON object to S3 with associated metadata
     response = s3_client.put_object(
         Bucket=bucket,
         Key=key,
@@ -52,6 +46,8 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: VideoSt
         ContentType="application/json",
         Metadata={"stage": payload.stage, "job_id": payload.job_id, "expires_at": payload.expires_at},
     )
+
+    # Return structured metadata about the uploaded object
     return UploadMetadata(
         bucket=bucket,
         key=key,
@@ -62,5 +58,6 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: VideoSt
 
 
 def _video_key(prefix: str, job_id: str, _channel_id: str, video_id: str) -> str:
-    """Build the flat S3 key for one video payload."""
+
+    # Combine prefix, video ID, and job ID into a slugified key
     return f"{prefix}/{slug(video_id)}-{slug(job_id)}.json"

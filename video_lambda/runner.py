@@ -32,13 +32,22 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
         Runtime object containing settings, event data, clients, and writer
         dependencies.
     """
+
+    # Load project settings from environment variables
     settings = load_settings()
+
     return Runtime(
         settings=settings,
         event=event,
+        # Initialize YouTube API client with project settings
         youtube_client=YouTubeClient(settings.youtube_api_key),
+
+        # Standard boto3 client for S3 staging operations
         s3_client=boto3.client("s3"),
+
+        # Specialized writer for MongoDB persistence
         mongo_writer=MongoWriter(settings),
+
     )
 
 
@@ -108,15 +117,24 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
         s3_ref: S3 object reference containing ``bucket`` and ``key``.
     """
     try:
+
+        # Fetch the raw channel-stage payload from S3
         raw_payload = read_json_object(runtime.s3_client, bucket=s3_ref["bucket"], key=s3_ref["key"])
+
         source = ChannelStagePayload.model_validate(raw_payload)
+
+        # Fetch raw video documents from the YouTube API
         videos = fetch_latest_video_documents(
             runtime.youtube_client,
             source.channel.channel_id,
             max_videos=runtime.settings.max_videos,
             delay_ms=runtime.settings.request_delay_ms,
         )
+
+        # Prepare the payload for S3 staging
         stage_payloads = [build_video_stage_payload(runtime, source, video) for video in videos]
+
+        # Upload processed results to the S3 staging bucket
         uploads = [
             put_stage_json(
                 runtime.s3_client,
@@ -126,9 +144,13 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
             )
             for payload in stage_payloads
         ]
+
         result["videos_staged"] += len(uploads)
         result["outputs"].extend(dump_model(upload) for upload in uploads)
+
+        # Sync the latest data into the MongoDB database
         mongo_upserts = runtime.mongo_writer.upsert_videos(videos)
+
         result["mongo_upserts"] += mongo_upserts
         logger.info(
             "Processed channel-stage source=%s/%s channel_id=%s videos_found=%s videos_staged=%s mongo_upserts=%s",

@@ -38,13 +38,22 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
         Runtime object containing settings, event data, clients, and writer
         dependencies.
     """
+
+    # Load project settings from environment variables
     settings = load_settings()
+
     return Runtime(
         settings=settings,
         event=event,
+        # Initialize YouTube API client with project settings
         youtube_client=YouTubeClient(settings.youtube_api_key),
+
+        # Standard boto3 client for S3 staging operations
         s3_client=boto3.client("s3"),
+
+        # Specialized writer for MongoDB persistence
         mongo_writer=MongoWriter(settings),
+
     )
 
 
@@ -115,10 +124,15 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
         s3_ref: S3 object reference containing ``bucket`` and ``key``.
     """
     try:
+
+        # Fetch the raw video-stage payload from S3
         raw_payload = read_json_object(runtime.s3_client, bucket=s3_ref["bucket"], key=s3_ref["key"])
+
         source = VideoStagePayload.model_validate(raw_payload)
         error = None
         try:
+
+            # Fetch raw comment documents from the YouTube API
             comments, comments_status = fetch_comment_documents(
                 runtime.youtube_client,
                 channel_id=source.channel.channel_id,
@@ -126,6 +140,7 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
                 max_comments=runtime.settings.max_comments,
                 delay_ms=runtime.settings.request_delay_ms,
             )
+
         except CommentsDisabledError as exc:
             comments = []
             comments_status = "disabled"
@@ -138,7 +153,10 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
                 s3_ref["key"],
             )
 
+        # Prepare the payload for S3 staging
         payload = build_comment_stage_payload(runtime, source, comments, comments_status=comments_status, error=error)
+
+        # Upload processed results to the S3 staging bucket
         upload = put_stage_json(
             runtime.s3_client,
             bucket=runtime.settings.pipeline_s3_bucket,
@@ -148,13 +166,18 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
 
         result["comment_results_staged"] += 1
         result["outputs"].append(dump_model(upload))
+
+        # Sync the latest data into the MongoDB database
         comments_upserted = runtime.mongo_writer.upsert_comments(comments)
+
+        # Update the video status to reflect current comment availability
         video_status_updates = runtime.mongo_writer.update_video_comment_status(
             source.video.video_id,
             comments_status=comments_status,
             comments_fetched=len(comments),
             error=error,
         )
+
         result["comments_upserted"] += comments_upserted
         result["video_status_updates"] += video_status_updates
         logger.info(

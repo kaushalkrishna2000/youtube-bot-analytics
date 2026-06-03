@@ -11,32 +11,31 @@ class MongoWriter:
     """Writes channel-stage documents to MongoDB."""
 
     def __init__(self, settings: Settings) -> None:
-        """Open MongoDB collections using Lambda settings.
 
-        Args:
-            settings: Loaded channel Lambda settings with Mongo connection
-                details.
-        """
+        # Connect to the MongoDB server using the provided URI
         self._client = MongoClient(settings.mongo_uri)
+
+        # Select the target database from the client
         db = self._client[settings.mongo_db_name]
+
+        # Initialize the channels collection reference
         self._channels = db[settings.mongo_channels_collection]
 
     def close(self) -> None:
-        """Close the underlying MongoDB client."""
+
+        # Close the underlying MongoDB client connection
         self._client.close()
 
     def upsert_channel(self, channel: ChannelDocument) -> int:
-        """Upsert one channel document by ``channel_id``.
 
-        Args:
-            channel: Channel document to write.
-
-        Returns:
-            Number of inserted or modified MongoDB documents.
-        """
+        # Convert the channel model into a dictionary for storage
         doc = dump_model(channel)
+
+        # Perform a bulk upsert operation matching by channel ID
         result = self._channels.bulk_write(
             [UpdateOne({"channel_id": channel.channel_id}, {"$set": doc}, upsert=True)],
             ordered=False,
         )
+
+        # Return the sum of inserted and modified document counts
         return result.upserted_count + result.modified_count

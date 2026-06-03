@@ -38,14 +38,25 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
     Returns:
         Runtime object containing settings, clients, and writer dependencies.
     """
+
+    # Load project settings from environment variables
     settings = load_settings()
+
+    # Generate a stable job identifier from the Lambda context
     job_id = get_job_id(context)
+
     return Runtime(
         settings=settings,
         job_id=job_id,
+        # Initialize YouTube API client with project settings
         youtube_client=YouTubeClient(settings.youtube_api_key),
+
+        # Standard boto3 client for S3 staging operations
         s3_client=boto3.client("s3"),
+
+        # Specialized writer for MongoDB persistence
         mongo_writer=MongoWriter(settings),
+
     )
 
 
@@ -116,17 +127,27 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], channel_input: s
         channel_input: Raw channel identifier from configuration.
     """
     try:
+
+        # Fetch raw channel data from the YouTube API
         channel_doc = fetch_channel_document(runtime.youtube_client, channel_input, delay_ms=runtime.settings.request_delay_ms)
+
+        # Prepare the payload for S3 staging
         payload = build_channel_stage_payload(runtime, channel_doc)
+
+        # Upload processed results to the S3 staging bucket
         upload = put_stage_json(
             runtime.s3_client,
             bucket=runtime.settings.pipeline_s3_bucket,
             prefix=runtime.settings.channel_stage_prefix,
             payload=payload,
         )
+
         result["staged"] += 1
         result["outputs"].append(dump_model(upload))
+
+        # Sync the latest data into the MongoDB database
         mongo_upserts = runtime.mongo_writer.upsert_channel(channel_doc)
+
         result["mongo_upserts"] += mongo_upserts
         logger.info(
             "Staged channel input=%s channel_id=%s s3_key=%s mongo_upserts=%s",

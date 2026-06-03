@@ -18,42 +18,49 @@ class YouTubeClient:
     """Small wrapper around the YouTube Data API service client."""
 
     def __init__(self, api_key: str) -> None:
-        """Create a YouTube API service for the provided key.
 
-        Args:
-            api_key: YouTube Data API key.
-        """
+        # Store the API key for service building
         self._api_key = api_key
+
+        # Build the internal YouTube service client
         self._service = self._build_service(api_key)
 
     @property
     def service(self) -> Any:
-        """Return the underlying Google API service object."""
+
+        # Expose the internal service client
         return self._service
 
     @property
     def api_key(self) -> str:
-        """Return the API key used to build the service."""
+
+        # Expose the API key used for this client
         return self._api_key
 
     def _build_service(self, api_key: str) -> Any:
-        """Build the YouTube Data API service without discovery caching."""
+
+        # Create the Google API service without discovery caching
         return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=api_key, cache_discovery=False)
 
     def call(self, request: Any, delay_ms: int = 0) -> dict[str, Any]:
-        """Execute a YouTube API request and apply optional throttling.
 
-        Args:
-            request: Google API request object with an ``execute`` method.
-            delay_ms: Delay to sleep after the request completes.
-
-        Returns:
-            Response dictionary from the YouTube API.
-        """
+        # Log the intent to execute an API request
         logger.debug("Executing YouTube API request")
+
+        # Track the start time for performance measurement
         start = time.perf_counter()
+
+        # Execute the request and capture the response
         result: dict[str, Any] = request.execute()
+
+        # Log completion details and execution time
         logger.debug("API call completed in %.0fms (delay_ms=%s)", (time.perf_counter() - start) * 1000, delay_ms)
+
+        # Apply a delay if throttling is requested
         if delay_ms > 0:
+
+            # Sleep for the specified duration in milliseconds
             time.sleep(delay_ms / 1000.0)
+
+        # Return the resulting response dictionary
         return result
