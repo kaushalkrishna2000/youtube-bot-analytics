@@ -27,7 +27,8 @@ graph LR
 
 - Triggered by S3 `ObjectCreated` events in the `staging/videos/` prefix.
 - Fetches top-level comments (up to `YOUTUBE_MAX_COMMENTS`) for the video using the YouTube Data API.
-- Upserts comment metadata into MongoDB.
+- Enriches comments with author channel metadata (title, custom URL, creation date) where available.
+- Upserts comment metadata into MongoDB with `enrichment_status`.
 - Updates the parent video document in MongoDB with comment status (e.g., `ok`, `disabled`, `none`).
 - Stages a final JSON result payload for each video in S3.
 
@@ -118,7 +119,7 @@ flowchart TD
 
 The Lambda uses Pydantic models for validation and serialization:
 - `VideoStagePayload`: The input schema read from S3.
-- `CommentDocument`: The shape of the document stored in MongoDB.
+- `CommentDocument`: The shape of the document stored in MongoDB, including author enrichment fields. Note that fields ending in `_at` are automatically enriched with a `__d` suffix containing a native BSON datetime when written to MongoDB.
 - `CommentStagePayload`: The final output schema written to S3.
 
 ## Error Handling

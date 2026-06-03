@@ -109,7 +109,7 @@ flowchart TD
 
 The Lambda uses Pydantic models for validation and serialization:
 - `ChannelStagePayload`: The input schema read from S3.
-- `VideoDocument`: The shape of the document stored in MongoDB.
+- `VideoDocument`: The shape of the document stored in MongoDB. Note that fields ending in `_at` are automatically enriched with a `__d` suffix containing a native BSON datetime when written to MongoDB.
 - `VideoStagePayload`: The output schema written to S3.
 
 ## Error Handling

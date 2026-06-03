@@ -159,6 +159,16 @@ Writes are idempotent upserts:
 The stage always writes S3 before Mongo. If Mongo fails, the S3 object remains
 available for replay/debugging.
 
+### Mongo Timestamp Enrichment
+
+The pipeline uses a `dump_model` helper that automatically enriches MongoDB
+documents with native BSON datetime objects. Any field ending in `_at` that
+contains an ISO-8601 string (e.g., `created_at`) is copied to a new field with
+the `__d` suffix (e.g., `created_at__d`) during the write.
+
+This allows for efficient date-range queries in MongoDB while preserving the
+original string format in the JSON payload and S3 objects.
+
 ### Pipeline Function Execution Flow
 
 The following horizontal flowchart details the execution sequence of functions across all three Lambda jobs, illustrating how they interact with external services and each other over time.

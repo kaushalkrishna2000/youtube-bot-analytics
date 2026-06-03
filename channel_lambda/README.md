@@ -101,7 +101,7 @@ flowchart TD
 ## Data Models
 
 The Lambda uses Pydantic models for validation and serialization:
-- `ChannelDocument`: The shape of the document stored in MongoDB.
+- `ChannelDocument`: The shape of the document stored in MongoDB. Note that fields ending in `_at` are automatically enriched with a `__d` suffix containing a native BSON datetime when written to MongoDB.
 - `ChannelStagePayload`: The shape of the JSON object written to S3.
 
 ## Error Handling
