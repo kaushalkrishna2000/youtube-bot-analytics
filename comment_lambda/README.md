@@ -8,20 +8,34 @@ This Lambda function processes video metadata staged in S3 and fetches top-level
 graph LR
     Start([S3 ObjectCreated Event]) --> LH[lambda_handler]
     LH --> LR[load_runtime]
-    LH --> BR[build_result]
     LH --> RWI[resolve_work_items]
     RWI --> Loop{Loop}
     Loop --> PWI[process_work_item]
-    PWI --> RS3[Read VideoStagePayload]
-    PWI --> YT[YouTube API]
-    PWI --> BCSP[build_comment_stage_payload]
-    PWI --> WS3[S3: Put Object]
-    PWI --> MW1[Mongo: upsert_comments]
-    PWI --> MW2[Mongo: update_video_comment_status]
+    PWI --> RS3[Read VideoStagePayload]:::s3
+    PWI --> YT[Fetch: commentThreads.list]:::youtube
+    YT -- Success --> AE[Enrich: channels.list]:::youtube
+    AE --> BCSP[build_comment_stage_payload]
+    YT -- Disabled --> BCSP
+    PWI --> WS3[S3: Put Object]:::s3
+    PWI --> MW1[Mongo: upsert_comments]:::mongodb
+    PWI --> MW2[Mongo: update_video_comment_status]:::mongodb
     MW2 --> Loop
-    Loop -- Done --> FR[finalize_result]
+    
+    %% Termination path at the bottom
+    Loop -- Done ----> FR[finalize_result]
     FR --> End([Return Result])
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
+
+### Legend
+| Icon/Color | Client | Description |
+| :--- | :--- | :--- |
+| <span style="color:#f96">●</span> | **YouTube** | Data retrieval and enrichment |
+| <span style="color:#69f">●</span> | **S3** | Payload read/write |
+| <span style="color:#4db33d">●</span> | **MongoDB** | Comment and video status persistence |
 
 ## Responsibility
 
@@ -49,15 +63,18 @@ sequenceDiagram
     S3_V-->>CoL: S3 ObjectCreated Event
     activate CoL
     CoL->>S3_V: Read VideoStagePayload
-    CoL->>YT: Fetch Video Comments
+    CoL->>YT: Fetch Comments (commentThreads.list)
     alt Comments Enabled
-        YT-->>CoL: List of CommentDocuments
+        YT-->>CoL: List of Raw Comments
+        CoL->>YT: Enrich Author Metadata (channels.list)
+        YT-->>CoL: Author Snippets
+        CoL-->>CoL: List of CommentDocuments
     else Comments Disabled
         YT-->>CoL: 403 Forbidden / CommentsDisabledError
     end
     
     CoL->>S3_Co: Upload CommentStagePayload (.json)
-    CoL->>DB: Upsert Comment Documents
+    CoL->>DB: Bulk Upsert Comment Documents
     CoL->>DB: Update Video Comment Status
     
     CoL-->>S3_V: Ack Event
@@ -70,33 +87,41 @@ flowchart TD
     LoadRuntime --> ResolveRefs[Extract S3 Bucket/Key from Event]
     ResolveRefs --> ForEachRef{For Each S3 Ref}
     
-    ForEachRef --> ReadS3[Read VideoStagePayload from S3]
-    ReadS3 --> FetchComments[Fetch Comments from YouTube]
+    ForEachRef --> ReadS3[Read VideoStagePayload from S3]:::s3
+    ReadS3 --> FetchComments[Fetch Comments via commentThreads.list]:::youtube
     
-    FetchComments -- Success --> BuildPayload[Build CommentStagePayload]
+    FetchComments -- Success --> Enrich[Enrich Author Metadata via channels.list]:::youtube
+    Enrich --> BuildPayload[Build CommentStagePayload]
     FetchComments -- Disabled --> BuildDisabled[Build Payload with Disabled Status]
     
-    BuildPayload --> UploadS3[Upload to S3 staging/comments/]
+    BuildPayload --> UploadS3[Upload to S3 staging/comments/]:::s3
     BuildDisabled --> UploadS3
     
-    UploadS3 --> UpsertComments[Upsert Comments to MongoDB]
-    UpsertComments --> UpdateVideo[Update Video Comment Status in MongoDB]
+    UploadS3 --> UpsertComments[Bulk Upsert Comments to MongoDB]:::mongodb
+    UpsertComments --> UpdateVideo[Update Video Status in MongoDB]:::mongodb
     UpdateVideo --> ForEachRef
-    
-    ForEachRef -- No more refs --> Finalize[Finalize & Return Result]
+
+    %% Termination path
+    ForEachRef -- No more refs ----> Finalize[Finalize & Return Result]
     Finalize --> End([End])
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
 
 1. **Load Runtime**: Initializes settings and clients.
 2. **Resolve Work Items**: Extracts the bucket and key from the S3 event.
 3. **Process Video Stage Object**:
-    - Reads the `VideoStagePayload` from S3.
-    - Fetches comments for the `video_id` from YouTube.
-    - Handles cases where comments are disabled.
-    - Builds a `CommentStagePayload` containing all fetched comments and status.
-    - Uploads the payload to S3 at `s3://<bucket>/<prefix>/<video_id>-<job_id>.json`.
-    - Upserts all fetched comment documents into the MongoDB `comments` collection.
-    - Updates the video document in the MongoDB `videos` collection with `comments_status`, `comments_fetched`, and any error messages.
+    - **Read Payload**: Reads the `VideoStagePayload` from S3.
+    - **Fetch & Pagination**: Retrieves top-level comments for the `video_id` using `commentThreads().list(part="snippet", videoId=..., maxResults=100)`. It handles pagination to fetch up to `YOUTUBE_MAX_COMMENTS`.
+    - **Author Enrichment**: Enhances comment data by fetching author metadata (profile pictures, handles) for unique commenters via a batch `channels().list(part="snippet", id="...")` call.
+    - **Error Handling**: Catches `CommentsDisabledError` (403 Forbidden) and records the state as `disabled`.
+    - **Build Payload**: Constructs a `CommentStagePayload` containing all enriched comments.
+    - **S3 Upload**: Uploads the payload to `s3://<bucket>/<prefix>/<video_id>-<job_id>.json`.
+    - **Mongo Persistence**:
+        - Performs a **bulk upsert** of all fetched comment documents into the `comments` collection.
+        - Updates the parent video document in the `videos` collection with `comments_status`, `comments_fetched` count, and any error messages.
 4. **Finalize**: Returns a summary including comment counts and MongoDB update counts.
 
 ## Environment Variables

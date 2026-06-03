@@ -8,18 +8,31 @@ This Lambda function is the entry point of the YouTube Bot Analytics pipeline. I
 graph LR
     Start([EventBridge Schedule]) --> LH[lambda_handler]
     LH --> LR[load_runtime]
-    LH --> BR[build_result]
     LH --> RWI[resolve_work_items]
     RWI --> Loop{Loop}
     Loop --> PWI[process_work_item]
-    PWI --> BCSP[build_channel_stage_payload]
-    PWI --> YT[YouTube API]
-    PWI --> S3[S3: Put Object]
-    PWI --> MW[Mongo: upsert_channel]
+    PWI --> Norm[Normalization Phase: channels.list]:::youtube
+    Norm --> Meta[Metadata Extraction: channels.list]:::youtube
+    Meta --> BCSP[build_channel_stage_payload]
+    PWI --> S3[S3: Put Object]:::s3
+    PWI --> MW[Mongo: upsert_channel]:::mongodb
     MW --> Loop
-    Loop -- Done --> FR[finalize_result]
+    
+    %% Termination path at the bottom
+    Loop -- Done ----> FR[finalize_result]
     FR --> End([Return Result])
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
+
+### Legend
+| Icon/Color | Client | Description |
+| :--- | :--- | :--- |
+| <span style="color:#f96">●</span> | **YouTube** | Data retrieval via YouTube Data API |
+| <span style="color:#69f">●</span> | **S3** | Staging payload persistence |
+| <span style="color:#4db33d">●</span> | **MongoDB** | Metadata persistence |
 
 ## Responsibility
 
@@ -48,7 +61,9 @@ sequenceDiagram
     CL->>CL: Load Runtime & Config
     
     loop for each channel_input
-        CL->>YT: Fetch Channel Metadata
+        CL->>YT: Resolve ID (channels.list)
+        YT-->>CL: channel_id
+        CL->>YT: Fetch Metadata (channels.list)
         YT-->>CL: ChannelDocument
         CL->>S3: Upload ChannelStagePayload (.json)
         CL->>DB: Upsert Channel Document
@@ -61,26 +76,33 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     Start([Start]) --> LoadRuntime[Load Runtime & Config]
-    LoadRuntime --> ResolveItems[Resolve Channel Inputs]
+    LoadRuntime --> ResolveItems[Resolve & Normalize Channel Inputs]
     ResolveItems --> ForEachChannel{For Each Channel}
     
-    ForEachChannel --> FetchYT[Fetch YouTube Channel Doc]
+    ForEachChannel --> Norm[Normalization: Resolve Channel ID via channels.list]:::youtube
+    Norm --> FetchYT[Extract Metadata: Fetch details via channels.list]:::youtube
     FetchYT --> BuildPayload[Build ChannelStagePayload]
-    BuildPayload --> UploadS3[Upload to S3 staging/channels/]
-    UploadS3 --> UpsertMongo[Upsert to MongoDB channels]
+    ForEachChannel --> UploadS3[Upload to S3 staging/channels/]:::s3
+    ForEachChannel --> UpsertMongo[Upsert to MongoDB channels]:::mongodb
     UpsertMongo --> ForEachChannel
-    
-    ForEachChannel -- No more items --> Finalize[Finalize & Return Result]
+
+    %% Termination path
+    ForEachChannel -- No more items ----> Finalize[Finalize & Return Result]
     Finalize --> End([End])
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
 
 1. **Load Runtime**: Initializes settings, YouTube client, S3 client, and MongoDB writer.
 2. **Resolve Work Items**: Normalizes the list of channels from the `YOUTUBE_CHANNELS` environment variable or the local settings file.
 3. **Process Each Channel**:
-    - Fetches the channel document from YouTube.
-    - Builds a `ChannelStagePayload`.
-    - Uploads the payload to S3 at `s3://<bucket>/<prefix>/<channel_id>-<job_id>.json`.
-    - Upserts the channel document into the MongoDB `channels` collection.
+    - **Normalization Phase**: Converts handles, user names, or URLs into canonical Channel IDs using `channels().list(forHandle=...)` or `forUsername=...`.
+    - **Metadata Extraction**: Fetches detailed channel attributes (subscriber count, view count, branding) using `channels().list(part="snippet,statistics", id=...)`.
+    - **Build Payload**: Constructs a `ChannelStagePayload`.
+    - **S3 Staging**: Uploads the payload to S3 at `s3://<bucket>/<prefix>/<channel_id>-<job_id>.json`.
+    - **Mongo Persistence**: Upserts the channel document into the MongoDB `channels` collection.
 4. **Finalize**: Returns a summary of the run, including counts of staged items and any errors encountered.
 
 ## Environment Variables

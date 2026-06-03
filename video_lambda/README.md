@@ -8,19 +8,33 @@ This Lambda function processes channel metadata staged in S3 and fetches the lat
 graph LR
     Start([S3 ObjectCreated Event]) --> LH[lambda_handler]
     LH --> LR[load_runtime]
-    LH --> BR[build_result]
     LH --> RWI[resolve_work_items]
     RWI --> Loop{Loop}
     Loop --> PWI[process_work_item]
-    PWI --> RS3[Read ChannelStagePayload]
-    PWI --> YT[YouTube API]
-    PWI --> BVSP[build_video_stage_payload]
-    PWI --> WS3[S3: Put Objects]
-    PWI --> MW[Mongo: upsert_videos]
-    MW --> Loop
-    Loop -- Done --> FR[finalize_result]
+    PWI --> RS3[Read ChannelStagePayload]:::s3
+    PWI --> YT1[Phase 1: channels.list]:::youtube
+    YT1 --> YT2[Phase 2: playlistItems.list]:::youtube
+    YT2 --> YT3[Phase 3: videos.list]:::youtube
+    YT3 --> BVSP[build_video_stage_payload]
+    BVSP --> WS3[S3: Put Objects]:::s3
+    WS3 --> Loop
+    
+    %% Termination path at the bottom
+    Loop -- Done ----> MW[Mongo: upsert_videos]:::mongodb
+    MW --> FR[finalize_result]
     FR --> End([Return Result])
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
+
+### Legend
+| Icon/Color | Client | Description |
+| :--- | :--- | :--- |
+| <span style="color:#f96">●</span> | **YouTube** | Data retrieval via YouTube Data API |
+| <span style="color:#69f">●</span> | **S3** | Staging payload read/write |
+| <span style="color:#4db33d">●</span> | **MongoDB** | Batch video metadata persistence |
 
 ## Responsibility
 
@@ -46,14 +60,16 @@ sequenceDiagram
     S3_C-->>VL: S3 ObjectCreated Event
     activate VL
     VL->>S3_C: Read ChannelStagePayload
-    VL->>YT: Fetch Latest Videos
+    VL->>YT: Phase 1: Resolve Uploads Playlist (channels.list)
+    VL->>YT: Phase 2: Collect Video IDs (playlistItems.list)
+    VL->>YT: Phase 3: Hydrate Metadata (videos.list)
     YT-->>VL: List of VideoDocuments
     
     loop for each video
         VL->>S3_V: Upload VideoStagePayload (.json)
     end
     
-    VL->>DB: Upsert Video Documents
+    VL->>DB: Bulk Upsert Video Documents
     VL-->>S3_C: Ack Event
     deactivate VL
 ```
@@ -64,30 +80,40 @@ flowchart TD
     LoadRuntime --> ResolveRefs[Extract S3 Bucket/Key from Event]
     ResolveRefs --> ForEachRef{For Each S3 Ref}
     
-    ForEachRef --> ReadS3[Read ChannelStagePayload from S3]
-    ReadS3 --> FetchVideos[Fetch Latest Videos from YouTube]
-    FetchVideos --> ForEachVideo{For Each Video}
+    ForEachRef --> ReadS3[Read ChannelStagePayload from S3]:::s3
+    ReadS3 --> P1[Phase 1: Resolve 'Uploads' Playlist via channels.list]:::youtube
+    P1 --> P2[Phase 2: Collect Video IDs via playlistItems.list]:::youtube
+    P2 --> P3[Phase 3: Hydrate Metadata via videos.list]:::youtube
+    P3 --> ForEachVideo{For Each Video}
     
     ForEachVideo --> BuildPayload[Build VideoStagePayload]
-    BuildPayload --> UploadS3[Upload to S3 staging/videos/]
+    BuildPayload --> UploadS3[Upload to S3 staging/videos/]:::s3
     UploadS3 --> ForEachVideo
     
-    ForEachVideo -- Done --> UpsertMongo[Upsert Videos to MongoDB]
+    ForEachVideo -- Done --> UpsertMongo[Bulk Upsert Videos to MongoDB]:::mongodb
     UpsertMongo --> ForEachRef
-    
-    ForEachRef -- No more refs --> Finalize[Finalize & Return Result]
+
+    %% Termination path
+    ForEachRef -- No more refs ----> Finalize[Finalize & Return Result]
     Finalize --> End([End])
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
 
 1. **Load Runtime**: Initializes settings and clients.
 2. **Resolve Work Items**: Extracts the bucket and key from the S3 event.
 3. **Process Channel Stage Object**:
-    - Reads the `ChannelStagePayload` from S3.
-    - Uses the `channel_id` to fetch the latest videos from YouTube.
-    - For each video:
+    - **Read Payload**: Reads the `ChannelStagePayload` from S3.
+    - **Three-Phase Discovery**:
+        - **Phase 1 (Playlist Resolution)**: Finds the channel's "Uploads" playlist ID using `channels().list(part="contentDetails", id=...)`.
+        - **Phase 2 (ID Collection)**: Retrieves the latest video IDs from that playlist using `playlistItems().list(playlistId=..., maxResults=...)`.
+        - **Phase 3 (Snippet Hydration)**: Performs a batch call to fetch full metadata for all discovered video IDs using `videos().list(part="snippet", id="...")`.
+    - **Stage Early (Inside Loop)**: For each video discovered:
         - Builds a `VideoStagePayload` (includes both channel and video metadata).
-        - Uploads the payload to S3 at `s3://<bucket>/<prefix>/<video_id>-<job_id>.json`.
-    - Upserts all fetched video documents into the MongoDB `videos` collection.
+        - Uploads the payload to S3 at `s3://<bucket>/<prefix>/<video_id>-<job_id>.json`. This triggers downstream processing immediately.
+    - **Persist Late (After Loop)**: Performs a single **bulk upsert** of all fetched video documents into the MongoDB `videos` collection.
 4. **Finalize**: Returns a summary including the number of videos staged and MongoDB upsert counts.
 
 ## Environment Variables

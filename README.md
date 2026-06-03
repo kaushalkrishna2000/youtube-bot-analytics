@@ -24,19 +24,30 @@ sequenceDiagram
 
     EB->>CL: Trigger (e.g., 00:00 UTC)
     activate CL
+    CL->>CL: Normalization (channels.list)
+    CL->>CL: Extract Metadata (channels.list)
     CL->>Mongo: Upsert Channel Metadata
     CL->>S3_C: Write ChannelStagePayload (.json)
     deactivate CL
 
     S3_C-->>VL: S3 ObjectCreated Event
     activate VL
-    VL->>Mongo: Upsert Video Metadata
-    VL->>S3_V: Write VideoStagePayload (.json)
+    VL->>VL: Phase 1: Resolve Uploads (channels.list)
+    VL->>VL: Phase 2: Collect Video IDs (playlistItems.list)
+    VL->>VL: Phase 3: Hydrate Metadata (videos.list)
+    
+    loop for each video
+        VL->>S3_V: Write VideoStagePayload (.json)
+    end
+    
+    VL->>Mongo: Bulk Upsert Video Metadata
     deactivate VL
 
     S3_V-->>CoL: S3 ObjectCreated Event
     activate CoL
-    CoL->>Mongo: Upsert Comment Metadata
+    CoL->>CoL: Fetch Comments (commentThreads.list)
+    CoL->>CoL: Enrich Author Metadata (channels.list)
+    CoL->>Mongo: Bulk Upsert Comment Metadata
     CoL->>Mongo: Update Video Comment Status
     Note right of CoL: Stages final result to S3
     deactivate CoL
@@ -182,53 +193,107 @@ graph LR
 
     %% --- Channel Lambda ---
     subgraph "Stage 1: Channel Lambda"
-        EB([EventBridge Schedule]):::trigger --> CH_H[lambda_handler]:::lambda
         CH_H --> CH_LR[load_runtime]
-        CH_H --> CH_BR[build_result]
         CH_H --> CH_RWI[resolve_work_items]
         CH_RWI --> CH_Loop{Loop}
         CH_Loop --> CH_PWI[process_work_item]
-        CH_PWI --> CH_BCSP[build_channel_stage_payload]
-        CH_PWI --> YT1[YouTube API]:::service
-        CH_PWI --> S3_C[S3: staging/channels/]:::service
-        CH_PWI --> MG1[Mongo: upsert_channel]:::service
-        CH_PWI --> CH_Loop
-        CH_Loop -- Done --> CH_FR[finalize_result]
+        CH_PWI --> CH_Norm[Normalization: channels.list]:::youtube
+        CH_Norm --> CH_Meta[Metadata: channels.list]:::youtube
+        CH_PWI --> S3_C[S3: staging/channels/]:::s3
+        CH_PWI --> MG1[Mongo: upsert_channel]:::mongodb
+        MG1 --> CH_Loop
+        
+        %% Termination path at the bottom
+        CH_Loop -- Done ----> CH_FR[finalize_result]
     end
 
     %% --- Video Lambda ---
     S3_C -- "ObjectCreated Event" --> VL_H[lambda_handler]:::lambda
     subgraph "Stage 2: Video Lambda"
         VL_H --> VL_LR[load_runtime]
-        VL_H --> VL_BR[build_result]
         VL_H --> VL_RWI[resolve_work_items]
         VL_RWI --> VL_Loop{Loop}
         VL_Loop --> VL_PWI[process_work_item]
-        VL_PWI --> VL_BVSP[build_video_stage_payload]
-        VL_PWI --> YT2[YouTube API]:::service
-        VL_PWI --> S3_V[S3: staging/videos/]:::service
-        VL_PWI --> MG2[Mongo: upsert_videos]:::service
-        VL_PWI --> VL_Loop
-        VL_Loop -- Done --> VL_FR[finalize_result]
+        VL_PWI --> VL_P1[Phase 1: channels.list]:::youtube
+        VL_P1 --> VL_P2[Phase 2: playlistItems.list]:::youtube
+        VL_P2 --> VL_P3[Phase 3: videos.list]:::youtube
+        VL_P3 --> S3_V[S3: staging/videos/]:::s3
+        S3_V --> VL_Loop
+        
+        %% Termination path at the bottom
+        VL_Loop -- Done ----> MG2[Mongo: upsert_videos]:::mongodb
+        MG2 --> VL_FR[finalize_result]
     end
 
     %% --- Comment Lambda ---
     S3_V -- "ObjectCreated Event" --> CoL_H[lambda_handler]:::lambda
     subgraph "Stage 3: Comment Lambda"
         CoL_H --> CoL_LR[load_runtime]
-        CoL_H --> CoL_BR[build_result]
         CoL_H --> CoL_RWI[resolve_work_items]
         CoL_RWI --> CoL_Loop{Loop}
         CoL_Loop --> CoL_PWI[process_work_item]
-        CoL_PWI --> CoL_BCSP[build_comment_stage_payload]
-        CoL_PWI --> YT3[YouTube API]:::service
-        CoL_PWI --> S3_Final[S3: staging/comments/]:::service
-        CoL_PWI --> MG3[Mongo: upsert_comments]:::service
-        CoL_PWI --> MG4[Mongo: update_video_comment_status]:::service
-        CoL_PWI --> CoL_Loop
-        CoL_Loop -- Done --> CoL_FR[finalize_result]
+        CoL_PWI --> CoL_YT3[commentThreads.list]:::youtube
+        CoL_YT3 --> CoL_AE[Author Enrichment: channels.list]:::youtube
+        CoL_AE --> S3_Final[S3: staging/comments/]:::s3
+        CoL_AE --> MG3[Mongo: upsert_comments]:::mongodb
+        MG3 --> MG4[Mongo: update_video_status]:::mongodb
+        MG4 --> CoL_Loop
+        
+        %% Termination path at the bottom
+        CoL_Loop -- Done ----> CoL_FR[finalize_result]
     end
+
+    classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
+    classDef s3 fill:#69f,stroke:#333,stroke-width:2px;
+    classDef mongodb fill:#4db33d,stroke:#333,stroke-width:2px;
 ```
+
+### Legend
+| Color | Client / Service |
+| :--- | :--- |
+| <span style="color:#f96">●</span> | **YouTube Data API** (Data retrieval) |
+| <span style="color:#69f">●</span> | **Amazon S3** (Staging & Event Triggers) |
+| <span style="color:#4db33d">●</span> | **MongoDB** (Final Metadata Persistence) |
+
+## Lambda Comparison & Processing Strategies
+
+The `video_lambda` occupies a unique structural and operational position in the pipeline compared to the `channel_lambda` (entry point) and `comment_lambda` (terminal stage). While all three share common infrastructure, their internal mechanics differ significantly.
+
+### 1. Architectural Role: The "Fan-Out" Engine
+The most fundamental difference is the **cardinality of output**.
+*   **Channel Lambda (1:1):** Takes one input (a channel handle/ID) and produces one output (one S3 object and one Mongo record).
+*   **Video Lambda (1:N):** This is the pipeline's primary expansion point. A single trigger (one channel) generates multiple individual S3 objects (one per video). This "fans out" the work, allowing many `comment_lambda` instances to run in parallel.
+*   **Comment Lambda (1:1 Summary):** Although it fetches many comments, it processes them for a single video and outputs a single summary S3 object for that video.
+
+### 2. Processing Strategy: "Stage Early, Persist Late"
+The `video_lambda` is the only function that intentionally separates its S3 staging from its MongoDB persistence for performance and reactivity.
+*   **Immediate Staging:** Inside its video loop, it uploads each video to S3 immediately. This ensures that the downstream `comment_lambda` can start working as soon as the first video is found.
+*   **Deferred Batching:** It collects all video metadata in memory and performs a **single bulk MongoDB upsert** only after the loop finishes.
+*   **Comparison:** 
+    *   `channel_lambda` does both S3 and Mongo writes inside its loop for every channel.
+    *   `comment_lambda` does both writes inside its loop for every video.
+
+### 3. YouTube API Complexity: Three-Phase Resolution
+The `video_lambda` has the most complex interaction with the YouTube API to ensure data accuracy:
+1.  **Playlist Resolution:** It first resolves the channel's "Uploads" playlist ID.
+2.  **ID Collection:** It iterates through the playlist to gather video IDs.
+3.  **Snippet Hydration:** It performs a secondary "Videos" API call to hydrate those IDs into full metadata documents.
+*   **Comparison:** `channel_lambda` and `comment_lambda` typically use more direct single-type API calls (though `comment_lambda` does secondary enrichment for comment authors).
+
+### 4. Data Flow & Context Passing
+The `video_lambda` acts as a crucial context carrier.
+*   **Downstream Enrichment:** It takes metadata from the `channel_lambda` (like the channel title and ID) and merges it into the `VideoStagePayload`.
+*   **Self-Containment:** This allows the `comment_lambda` to know which channel a video belongs to without having to query MongoDB or the YouTube API again, reducing API quota usage.
+
+### 5. Summary Comparison Table
+
+| Feature | Channel Lambda | Video Lambda | Comment Lambda |
+| :--- | :--- | :--- | :--- |
+| **Logic Pattern** | Resolve & Save | **Fan-Out & Batch** | Fetch & Enrich |
+| **S3 Output** | 1 object per channel | **N objects per channel** | 1 summary per video |
+| **Mongo Timing** | Immediate (inside loop) | **Deferred (after loop)** | Immediate (inside loop) |
+| **Primary Goal** | Discovery | **Expansion** | Deep Analysis |
+| **Quota Usage** | Very Low | **Medium (Multi-phase)** | High (Pagination) |
 
 Pydantic models define the S3 staging payloads and Mongo document shapes inside
 each job package. Lambda code does not create indexes. Create these indexes
