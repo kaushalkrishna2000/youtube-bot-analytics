@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from channel_job.model import ChannelStagePayload, UploadMetadata, dump_model
+from channel_job.model import ChannelStagePayload, UploadMetadata
 from channel_job.utils.text import slug
 
 
@@ -15,7 +15,7 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Channel
     key = _channel_key(prefix, payload.job_id, payload.channel.channel_id)
 
     # Serialize the payload to a compact JSON byte string
-    body = json.dumps(dump_model(payload), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    body = json.dumps(payload.model_dump(mode="json", exclude_none=False), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
     # Upload the JSON object to S3 with associated metadata
     response = s3_client.put_object(
