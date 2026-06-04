@@ -12,6 +12,11 @@ CHANNEL_ID_RE = re.compile(r"^UC[\w-]{22}$")
 HANDLE_RE = re.compile(r"^@([\w.-]+)$", re.IGNORECASE)
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def get_job_id(context: Any) -> str:
 
     # Return the AWS request ID if available, otherwise generate a unique UUID
@@ -51,6 +56,11 @@ def normalize_channel_inputs(values: list[str]) -> list[str]:
 
     # Return the ordered list of unique channel inputs
     return normalized
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def extract_channel_from_url(raw: str) -> str | None:

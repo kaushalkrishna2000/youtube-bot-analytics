@@ -14,6 +14,11 @@ DEFAULT_MONGO_DB_NAME = "youtube_bot_analytics"
 DEFAULT_VIDEOS_COLLECTION = "videos"
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def load_settings() -> Settings:
 
     # Construct and return a validated Settings model from environment variables

@@ -12,6 +12,11 @@ LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def configure_logging() -> None:
 
     # Determine the desired log level from environment variables or use the default
@@ -47,6 +52,11 @@ def configure_logging() -> None:
 
     # Apply the log level to the root logger
     root.setLevel(level)
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _resolve_log_level(raw_level: str) -> int:

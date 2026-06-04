@@ -9,6 +9,11 @@ from comment_job.model import CommentStagePayload, UploadMetadata
 from comment_job.utils.text import slug
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def read_json_object(s3_client: Any, *, bucket: str, key: str) -> dict[str, Any]:
 
     # Retrieve the object from S3 using the provided bucket and key
@@ -55,6 +60,11 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Comment
         size_bytes=len(body),
         etag=response.get("ETag") if isinstance(response, dict) else None,
     )
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _comment_key(prefix: str, job_id: str, _channel_id: str, video_id: str) -> str:

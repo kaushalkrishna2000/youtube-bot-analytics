@@ -17,6 +17,11 @@ class CommentsDisabledError(ValueError):
     """Raised when YouTube reports disabled comments for a video."""
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def fetch_comment_documents(
     client: YouTubeClient,
     *,
@@ -97,6 +102,11 @@ def fetch_comment_documents(
 
     # Enrich commenter metadata and return the final results
     return _enrich_commenter_channels(client, comments, delay_ms=delay_ms), status
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _fetch_comment_page(

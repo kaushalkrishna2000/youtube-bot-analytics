@@ -8,7 +8,8 @@ This Lambda function processes channel metadata staged in S3 and fetches the lat
 graph LR
     Start([S3 ObjectCreated Event]) --> LH[lambda_handler]
     LH --> LR[load_runtime]
-    LH --> RWI[resolve_work_items]
+    LR --> BR[build_result]
+    BR --> RWI[resolve_work_items]
     RWI --> Loop{Loop}
     Loop --> PWI[process_work_item]
     PWI --> RS3[Read ChannelStagePayload]:::s3
@@ -20,7 +21,7 @@ graph LR
     WS3 --> Loop
     
     %% Termination path at the bottom
-    Loop ---- Done ----> MW[Mongo: upsert_videos]:::mongodb
+    Loop -->|Done| MW[Mongo: upsert_videos]:::mongodb
     MW --> FR[finalize_result]
     FR --> End([Return Result])
 
@@ -90,11 +91,11 @@ flowchart TD
     BuildPayload --> UploadS3[Upload to S3 staging/videos/]:::s3
     UploadS3 --> ForEachVideo
     
-    ForEachVideo ---- Done ----> UpsertMongo[Bulk Upsert Videos to MongoDB]:::mongodb
+    ForEachVideo -->|Done| UpsertMongo[Bulk Upsert Videos to MongoDB]:::mongodb
     UpsertMongo --> ForEachRef
     
     %% Termination path
-    ForEachRef ---- No more refs ----> Finalize[Finalize & Return Result]
+    ForEachRef -->|No more refs| Finalize[Finalize & Return Result]
     Finalize --> End([End])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -103,8 +104,9 @@ flowchart TD
 ```
 
 1. **Load Runtime**: Initializes settings and clients.
-2. **Resolve Work Items**: Extracts the bucket and key from the S3 event.
-3. **Process Channel Stage Object**:
+2. **Build Result**: Initializes the result payload and calls `resolve_work_items` internally to get the S3 ref count for the startup log.
+3. **Resolve Work Items**: Extracts the bucket and key from the S3 event. Called once inside `build_result` (for logging) and once in the handler loop (to iterate) — both calls return the same list.
+4. **Process Channel Stage Object**:
     - **Read Payload**: Reads the `ChannelStagePayload` from S3.
     - **Three-Phase Discovery**:
         - **Phase 1 (Playlist Resolution)**: Finds the channel's "Uploads" playlist ID using `channels().list(part="contentDetails", id=...)`.
@@ -114,7 +116,7 @@ flowchart TD
         - Builds a `VideoStagePayload` (includes both channel and video metadata).
         - Uploads the payload to S3 at `s3://<bucket>/<prefix>/<video_id>-<job_id>.json`. This triggers downstream processing immediately.
     - **Persist Late (After Loop)**: Performs a single **bulk upsert** of all fetched video documents into the MongoDB `videos` collection.
-4. **Finalize**: Returns a summary including the number of videos staged and MongoDB upsert counts.
+5. **Finalize**: Returns a summary including the number of videos staged and MongoDB upsert counts.
 
 ## Environment Variables
 

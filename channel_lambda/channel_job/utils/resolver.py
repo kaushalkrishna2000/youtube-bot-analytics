@@ -11,6 +11,11 @@ class ChannelNotFoundError(ValueError):
     """Raised when a channel input cannot be resolved to a YouTube channel."""
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def fetch_channel_document(client: YouTubeClient, channel_input: str, *, delay_ms: int) -> ChannelDocument:
 
     # Resolve the provided input string into a canonical YouTube channel ID
@@ -113,6 +118,11 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
 
     # Fall back to resolving the input as a handle if no other pattern matched
     return _resolve_by_handle(client, raw, delay_ms=delay_ms)
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _resolve_by_handle(client: YouTubeClient, handle: str, *, delay_ms: int) -> str:

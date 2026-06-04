@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# Runtime setup
+# Main Flow  –  called by lambda_handler in this order:
+#   1. load_runtime  →  2. build_result  →  3. resolve_work_items  →  4. process_work_item  →  5. finalize_result
+# Note: resolve_work_items is called twice – once inside build_result (to get the count for logging) and once
+# in the lambda_handler loop (to iterate). Both calls return the same list; the double call is intentional and harmless.
 # -----------------------------------------------------------------------------
 
 
@@ -57,11 +60,6 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
     )
 
 
-# -----------------------------------------------------------------------------
-# Work item resolution
-# -----------------------------------------------------------------------------
-
-
 def resolve_work_items(runtime: Runtime) -> list[dict[str, str]]:
     """Extract S3 object references from the invocation event.
 
@@ -72,11 +70,6 @@ def resolve_work_items(runtime: Runtime) -> list[dict[str, str]]:
         List of dictionaries with ``bucket`` and ``key`` values.
     """
     return parse_s3_event(runtime.event)
-
-
-# -----------------------------------------------------------------------------
-# Result initialization
-# -----------------------------------------------------------------------------
 
 
 def build_result(runtime: Runtime) -> dict[str, Any]:
@@ -108,11 +101,6 @@ def build_result(runtime: Runtime) -> dict[str, Any]:
         "outputs": [],
         "errors": [],
     }
-
-
-# -----------------------------------------------------------------------------
-# Work item processing
-# -----------------------------------------------------------------------------
 
 
 def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str, str]) -> None:
@@ -197,11 +185,6 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], s3_ref: dict[str
         result["errors"].append({"bucket": s3_ref["bucket"], "key": s3_ref["key"], "message": str(exc)})
 
 
-# -----------------------------------------------------------------------------
-# Result finalization
-# -----------------------------------------------------------------------------
-
-
 def finalize_result(result: dict[str, Any]) -> dict[str, Any]:
     """Finalize success status and emit the comment-stage summary log.
 
@@ -225,7 +208,7 @@ def finalize_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# Payload building
+# Step Helpers
 # -----------------------------------------------------------------------------
 
 

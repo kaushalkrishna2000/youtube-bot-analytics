@@ -8,6 +8,11 @@ from video_job.utils.batching import VIDEO_BATCH_SIZE, iter_batches
 from video_job.utils.youtube_items import extract_video_id
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def fetch_latest_video_documents(
     client: YouTubeClient,
     channel_id: str,
@@ -35,6 +40,11 @@ def fetch_latest_video_documents(
 
     # Hydrate and return full video documents for the collected IDs
     return _hydrate_video_documents(client, channel_id, video_ids, delay_ms=delay_ms)
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _get_uploads_playlist_id(client: YouTubeClient, channel_id: str, *, delay_ms: int) -> str | None:

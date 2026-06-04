@@ -9,6 +9,11 @@ from channel_job.model import ChannelStagePayload, UploadMetadata
 from channel_job.utils.text import slug
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: ChannelStagePayload) -> UploadMetadata:
 
     # Build the unique S3 key for this channel payload
@@ -34,6 +39,11 @@ def put_stage_json(s3_client: Any, *, bucket: str, prefix: str, payload: Channel
         size_bytes=len(body),
         etag=response.get("ETag") if isinstance(response, dict) else None,
     )
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _channel_key(prefix: str, job_id: str, channel_id: str) -> str:

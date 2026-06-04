@@ -6,6 +6,11 @@ from __future__ import annotations
 COMMENT_PAGE_SIZE = 100
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def normalize_author_channel_id(raw: object) -> str | None:
 
     # Return None if the raw input is missing

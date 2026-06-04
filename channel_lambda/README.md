@@ -8,7 +8,8 @@ This Lambda function is the entry point of the YouTube Bot Analytics pipeline. I
 graph LR
     Start([EventBridge Schedule]) --> LH[lambda_handler]
     LH --> LR[load_runtime]
-    LH --> RWI[resolve_work_items]
+    LR --> BR[build_result]
+    BR --> RWI[resolve_work_items]
     RWI --> Loop{Loop}
     Loop --> PWI[process_work_item]
     PWI --> Norm[Normalization Phase: channels.list]:::youtube
@@ -19,7 +20,7 @@ graph LR
     MW --> Loop
     
     %% Termination path at the bottom
-    Loop ---- Done ----> FR[finalize_result]
+    Loop -->|Done| FR[finalize_result]
     FR --> End([Return Result])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -74,7 +75,7 @@ sequenceDiagram
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     Start([Start]) --> LoadRuntime[Load Runtime & Config]
     LoadRuntime --> ResolveItems[Resolve & Normalize Channel Inputs]
     ResolveItems --> ForEachChannel{For Each Channel}
@@ -87,7 +88,7 @@ flowchart LR
     UpsertMongo --> ForEachChannel
 
     %% Termination path
-    ForEachChannel ---- No more items ----> Finalize[Finalize & Return Result]
+    ForEachChannel -->|No more items| Finalize[Finalize & Return Result]
     Finalize --> End([End])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -96,14 +97,15 @@ flowchart LR
 ```
 
 1. **Load Runtime**: Initializes settings, YouTube client, S3 client, and MongoDB writer.
-2. **Resolve Work Items**: Normalizes the list of channels from the `YOUTUBE_CHANNELS` environment variable or the local settings file.
-3. **Process Each Channel**:
+2. **Build Result**: Initializes the result payload and calls `resolve_work_items` internally to get the channel count for the startup log.
+3. **Resolve Work Items**: Normalizes the list of channels from the `YOUTUBE_CHANNELS` environment variable or the local settings file. Called once inside `build_result` (for logging) and once in the handler loop (to iterate) — both calls return the same list.
+4. **Process Each Channel**:
     - **Normalization Phase**: Converts handles, user names, or URLs into canonical Channel IDs using `channels().list(forHandle=...)` or `forUsername=...`.
     - **Metadata Extraction**: Fetches detailed channel attributes (subscriber count, view count, branding) using `channels().list(part="snippet,statistics", id=...)`.
     - **Build Payload**: Constructs a `ChannelStagePayload`.
     - **S3 Staging**: Uploads the payload to S3 at `s3://<bucket>/<prefix>/<channel_id>-<job_id>.json`.
     - **Mongo Persistence**: Upserts the channel document into the MongoDB `channels` collection.
-4. **Finalize**: Returns a summary of the run, including counts of staged items and any errors encountered.
+5. **Finalize**: Returns a summary of the run, including counts of staged items and any errors encountered.
 
 ## Environment Variables
 

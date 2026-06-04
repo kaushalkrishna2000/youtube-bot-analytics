@@ -23,7 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# Runtime setup
+# Main Flow - called by lambda_handler in this order:
+#   1. load_runtime → 2. build_result → 3. resolve_work_items → 4. process_work_item → 5. finalize_result
+# Note: resolve_work_items is called twice – once inside build_result (to get the count for logging) and once
+# in the lambda_handler loop (to iterate). Both calls return the same list; the double call is intentional and harmless.
 # -----------------------------------------------------------------------------
 
 
@@ -60,11 +63,6 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
     )
 
 
-# -----------------------------------------------------------------------------
-# Work item resolution
-# -----------------------------------------------------------------------------
-
-
 def resolve_work_items(runtime: Runtime) -> list[str]:
     """Return normalized channel inputs configured for this invocation.
 
@@ -75,11 +73,6 @@ def resolve_work_items(runtime: Runtime) -> list[str]:
         Channel handles, IDs, names, or URLs stripped of empty entries.
     """
     return normalize_channel_inputs(runtime.settings.youtube_channels)
-
-
-# -----------------------------------------------------------------------------
-# Result initialization
-# -----------------------------------------------------------------------------
 
 
 def build_result(runtime: Runtime) -> dict[str, Any]:
@@ -111,11 +104,6 @@ def build_result(runtime: Runtime) -> dict[str, Any]:
         "outputs": [],
         "errors": [],
     }
-
-
-# -----------------------------------------------------------------------------
-# Work item processing
-# -----------------------------------------------------------------------------
 
 
 def process_work_item(runtime: Runtime, result: dict[str, Any], channel_input: str) -> None:
@@ -161,11 +149,6 @@ def process_work_item(runtime: Runtime, result: dict[str, Any], channel_input: s
         result["errors"].append({"channel_input": channel_input, "message": str(exc)})
 
 
-# -----------------------------------------------------------------------------
-# Result finalization
-# -----------------------------------------------------------------------------
-
-
 def finalize_result(result: dict[str, Any]) -> dict[str, Any]:
     """Finalize success status and emit the channel-stage summary log.
 
@@ -188,7 +171,7 @@ def finalize_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# Payload building
+# Step Helpers
 # -----------------------------------------------------------------------------
 
 

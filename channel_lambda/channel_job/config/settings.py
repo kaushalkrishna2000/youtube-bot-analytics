@@ -17,6 +17,11 @@ DEFAULT_CHANNELS_COLLECTION = "channels"
 CODE_CHANNELS: list[str] = []
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def load_settings() -> Settings:
 
     # Construct and return a validated Settings model from environment variables
@@ -31,6 +36,11 @@ def load_settings() -> Settings:
         mongo_db_name=_optional("MONGO_DB_NAME", DEFAULT_MONGO_DB_NAME),
         mongo_channels_collection=_optional("MONGO_CHANNELS_COLLECTION", DEFAULT_CHANNELS_COLLECTION),
     )
+
+
+# -----------------------------------------------------------------------------
+# Private Helpers
+# -----------------------------------------------------------------------------
 
 
 def _load_channel_inputs() -> list[str]:

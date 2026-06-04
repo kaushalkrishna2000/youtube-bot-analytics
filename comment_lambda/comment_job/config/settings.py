@@ -15,6 +15,11 @@ DEFAULT_VIDEOS_COLLECTION = "videos"
 DEFAULT_COMMENTS_COLLECTION = "comments"
 
 
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+
 def load_settings() -> Settings:
 
     # Construct and return a validated Settings model from environment variables

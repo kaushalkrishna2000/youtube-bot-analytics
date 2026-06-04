@@ -194,7 +194,8 @@ graph TD
     %% --- Channel Lambda ---
     subgraph "Stage 1: Channel Lambda"
         CH_H --> CH_LR[load_runtime]
-        CH_H --> CH_RWI[resolve_work_items]
+        CH_LR --> CH_BR[build_result]
+        CH_BR --> CH_RWI[resolve_work_items]
         CH_RWI --> CH_Loop{Loop}
         CH_Loop --> CH_PWI[process_work_item]
         CH_PWI --> CH_Norm[Normalization: channels.list]:::youtube
@@ -204,14 +205,15 @@ graph TD
         MG1 --> CH_Loop
         
         %% Termination path at the bottom
-        CH_Loop ---- Done ----> CH_FR[finalize_result]
+        CH_Loop -->|Done| CH_FR[finalize_result]
     end
 
     %% --- Video Lambda ---
     S3_C -- "ObjectCreated Event" --> VL_H[lambda_handler]:::lambda
     subgraph "Stage 2: Video Lambda"
         VL_H --> VL_LR[load_runtime]
-        VL_H --> VL_RWI[resolve_work_items]
+        VL_LR --> VL_BR[build_result]
+        VL_BR --> VL_RWI[resolve_work_items]
         VL_RWI --> VL_Loop{Loop}
         VL_Loop --> VL_PWI[process_work_item]
         VL_PWI --> VL_P1[Phase 1: channels.list]:::youtube
@@ -221,7 +223,7 @@ graph TD
         S3_V --> VL_Loop
         
         %% Termination path at the bottom
-        VL_Loop ---- Done ----> MG2[Mongo: upsert_videos]:::mongodb
+        VL_Loop -->|Done| MG2[Mongo: upsert_videos]:::mongodb
         MG2 --> VL_FR[finalize_result]
     end
 
@@ -229,7 +231,8 @@ graph TD
     S3_V -- "ObjectCreated Event" --> CoL_H[lambda_handler]:::lambda
     subgraph "Stage 3: Comment Lambda"
         CoL_H --> CoL_LR[load_runtime]
-        CoL_H --> CoL_RWI[resolve_work_items]
+        CoL_LR --> CoL_BR[build_result]
+        CoL_BR --> CoL_RWI[resolve_work_items]
         CoL_RWI --> CoL_Loop{Loop}
         CoL_Loop --> CoL_PWI[process_work_item]
         CoL_PWI --> CoL_YT3[commentThreads.list]:::youtube
@@ -240,7 +243,7 @@ graph TD
         MG4 --> CoL_Loop
         
         %% Termination path at the bottom
-        CoL_Loop ---- Done ----> CoL_FR[finalize_result]
+        CoL_Loop -->|Done| CoL_FR[finalize_result]
     end
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;

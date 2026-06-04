@@ -8,7 +8,8 @@ This Lambda function processes video metadata staged in S3 and fetches top-level
 graph LR
     Start([S3 ObjectCreated Event]) --> LH[lambda_handler]
     LH --> LR[load_runtime]
-    LH --> RWI[resolve_work_items]
+    LR --> BR[build_result]
+    BR --> RWI[resolve_work_items]
     RWI --> Loop{Loop}
     Loop --> PWI[process_work_item]
     PWI --> RS3[Read VideoStagePayload]:::s3
@@ -22,7 +23,7 @@ graph LR
     MW2 --> Loop
     
     %% Termination path at the bottom
-    Loop ---- Done ----> FR[finalize_result]
+    Loop -->|Done| FR[finalize_result]
     FR --> End([Return Result])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -82,7 +83,7 @@ sequenceDiagram
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     Start([Start]) --> LoadRuntime[Load Runtime & Clients]
     LoadRuntime --> ResolveRefs[Extract S3 Bucket/Key from Event]
     ResolveRefs --> ForEachRef{For Each S3 Ref}
@@ -102,7 +103,7 @@ flowchart LR
     UpdateVideo --> ForEachRef
 
     %% Termination path
-    ForEachRef ---- No more refs ----> Finalize[Finalize & Return Result]
+    ForEachRef -->|No more refs| Finalize[Finalize & Return Result]
     Finalize --> End([End])
 
     classDef youtube fill:#f96,stroke:#333,stroke-width:2px;
@@ -111,8 +112,9 @@ flowchart LR
 ```
 
 1. **Load Runtime**: Initializes settings and clients.
-2. **Resolve Work Items**: Extracts the bucket and key from the S3 event.
-3. **Process Video Stage Object**:
+2. **Build Result**: Initializes the result payload and calls `resolve_work_items` internally to get the S3 ref count for the startup log.
+3. **Resolve Work Items**: Extracts the bucket and key from the S3 event. Called once inside `build_result` (for logging) and once in the handler loop (to iterate) — both calls return the same list.
+4. **Process Video Stage Object**:
     - **Read Payload**: Reads the `VideoStagePayload` from S3.
     - **Fetch & Pagination**: Retrieves top-level comments for the `video_id` using `commentThreads().list(part="snippet", videoId=..., maxResults=100)`. It handles pagination to fetch up to `YOUTUBE_MAX_COMMENTS`.
     - **Author Enrichment**: Enhances comment data by fetching author metadata (profile pictures, handles) for unique commenters via a batch `channels().list(part="snippet", id="...")` call.
@@ -122,7 +124,7 @@ flowchart LR
     - **Mongo Persistence**:
         - Performs a **bulk upsert** of all fetched comment documents into the `comments` collection.
         - Updates the parent video document in the `videos` collection with `comments_status`, `comments_fetched` count, and any error messages.
-4. **Finalize**: Returns a summary including comment counts and MongoDB update counts.
+5. **Finalize**: Returns a summary including comment counts and MongoDB update counts.
 
 ## Environment Variables
 
