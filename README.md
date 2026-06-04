@@ -106,6 +106,311 @@ The default logical TTL is two days. Configure the S3 bucket lifecycle with an
 expiration rule of `Days=2` for the `staging/` prefix to remove old staging
 objects automatically.
 
+## Payload Matrix
+
+The three lambdas form a pipeline. Each one has two kinds of payload: the **AWS Lambda invocation input/output** (the `event` dict and the handler return dict), and the **S3 stage payload** that is the real data contract passed between lambdas.
+
+---
+
+### 1. `channel_lambda`
+
+#### Invocation Input (`event`)
+
+An **EventBridge scheduled event** (or a local test dict). The channel stage does **not** read channel identifiers from the event body — it reads them from configuration (environment variables / settings). The event is accepted for AWS compatibility only.
+
+```json
+{}
+```
+
+#### S3 Output — `ChannelStagePayload` (written to S3, triggers `video_lambda`)
+
+```json
+{
+  "schema_version": "2026-06-02",
+  "stage": "channel",
+  "job_id": "<uuid>",
+  "created_at": "<ISO 8601>",
+  "expires_at": "<ISO 8601>",
+  "channel": {
+    "channel_id": "UCxxxxxx",
+    "input_raw": "<raw input string>",
+    "title": "Channel Name",
+    "custom_url": "@handle",
+    "channel_created_at": "<ISO 8601>",
+    "subscriber_count": 123456,
+    "video_count": 42
+  }
+}
+```
+
+#### MongoDB Write — `channels` collection (upsert on `channel_id`)
+
+```json
+{
+  "channel_id": "UCxxxxxx",
+  "input_raw": "@handle",
+  "title": "Channel Name",
+  "custom_url": "@handle",
+  "channel_created_at": "2015-03-10T12:00:00Z",
+  "channel_created_at__d": { "$date": "2015-03-10T12:00:00Z" },
+  "subscriber_count": 123456,
+  "video_count": 42
+}
+```
+
+#### Lambda Handler Return (invocation output)
+
+```json
+{
+  "ok": true,
+  "job_id": "<uuid>",
+  "stage": "channel",
+  "requested": 3,
+  "staged": 3,
+  "mongo_upserts": 3,
+  "outputs": [
+    {
+      "bucket": "my-bucket",
+      "key": "staging/channels/UCxxxxxx-<job_id>.json",
+      "s3_uri": "s3://my-bucket/staging/channels/UCxxxxxx-<job_id>.json",
+      "size_bytes": 512,
+      "etag": "abc123"
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+### 2. `video_lambda`
+
+#### Invocation Input (`event`)
+
+An **S3 event** triggered when `channel_lambda` writes a `ChannelStagePayload` object to S3.
+
+```json
+{
+  "Records": [
+    {
+      "s3": {
+        "bucket": { "name": "my-bucket" },
+        "object": { "key": "staging/channels/UCxxxxxx-<job_id>.json" }
+      }
+    }
+  ]
+}
+```
+
+#### S3 Output — `VideoStagePayload` (written to S3, triggers `comment_lambda`)
+
+One file is written **per video** found on the channel.
+
+```json
+{
+  "schema_version": "2026-06-02",
+  "stage": "video",
+  "job_id": "<uuid>",
+  "created_at": "<ISO 8601>",
+  "expires_at": "<ISO 8601>",
+  "channel": {
+    "channel_id": "UCxxxxxx",
+    "input_raw": "@handle",
+    "title": "Channel Name",
+    "custom_url": "@handle",
+    "channel_created_at": "<ISO 8601>",
+    "subscriber_count": 123456,
+    "video_count": 42
+  },
+  "video": {
+    "video_id": "dQw4w9WgXcQ",
+    "channel_id": "UCxxxxxx",
+    "title": "Video Title",
+    "published_at": "<ISO 8601>",
+    "comments_status": "pending",
+    "comments_fetched": 0,
+    "comments_error": null
+  }
+}
+```
+
+#### MongoDB Write — `videos` collection (bulk upsert on `video_id`)
+
+```json
+{
+  "video_id": "dQw4w9WgXcQ",
+  "channel_id": "UCxxxxxx",
+  "title": "Video Title",
+  "published_at": "2026-01-15T10:30:00Z",
+  "published_at__d": { "$date": "2026-01-15T10:30:00Z" },
+  "comments_status": "pending",
+  "comments_fetched": 0,
+  "comments_error": null
+}
+```
+
+#### Lambda Handler Return (invocation output)
+
+```json
+{
+  "ok": true,
+  "stage": "video",
+  "processed": 1,
+  "videos_staged": 5,
+  "mongo_upserts": 5,
+  "outputs": [
+    {
+      "bucket": "my-bucket",
+      "key": "staging/videos/dQw4w9WgXcQ-<job_id>.json",
+      "s3_uri": "s3://my-bucket/staging/videos/dQw4w9WgXcQ-<job_id>.json",
+      "size_bytes": 640,
+      "etag": "def456"
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+### 3. `comment_lambda`
+
+#### Invocation Input (`event`)
+
+An **S3 event** triggered when `video_lambda` writes a `VideoStagePayload` object to S3.
+
+```json
+{
+  "Records": [
+    {
+      "s3": {
+        "bucket": { "name": "my-bucket" },
+        "object": { "key": "staging/videos/dQw4w9WgXcQ-<job_id>.json" }
+      }
+    }
+  ]
+}
+```
+
+#### S3 Output — `CommentStagePayload` (written to S3, terminal stage)
+
+One file is written **per video**.
+
+```json
+{
+  "schema_version": "2026-06-02",
+  "stage": "comment",
+  "job_id": "<uuid>",
+  "created_at": "<ISO 8601>",
+  "expires_at": "<ISO 8601>",
+  "channel": {
+    "channel_id": "UCxxxxxx",
+    "input_raw": "@handle",
+    "title": "Channel Name",
+    "custom_url": "@handle",
+    "channel_created_at": "<ISO 8601>",
+    "subscriber_count": 123456,
+    "video_count": 42
+  },
+  "video": {
+    "video_id": "dQw4w9WgXcQ",
+    "channel_id": "UCxxxxxx",
+    "title": "Video Title",
+    "published_at": "<ISO 8601>",
+    "comments_status": "success",
+    "comments_fetched": 150,
+    "comments_error": null
+  },
+  "comments_status": "success",
+  "comments_fetched": 150,
+  "comments": [
+    {
+      "comment_id": "UgxXXX",
+      "channel_id": "UCxxxxxx",
+      "video_id": "dQw4w9WgXcQ",
+      "comment_text": "Great video!",
+      "comment_published_at": "<ISO 8601>",
+      "author_display_name": "John Doe",
+      "author_channel_id": "UCyyyyyy",
+      "like_count": 5,
+      "author_channel_title": null,
+      "author_channel_created_at": null,
+      "author_channel_custom_url": null,
+      "enrichment_status": "pending"
+    }
+  ],
+  "error": null
+}
+```
+
+#### MongoDB Write — `comments` collection (bulk upsert on `comment_id`)
+
+```json
+{
+  "comment_id": "UgxXXX",
+  "channel_id": "UCxxxxxx",
+  "video_id": "dQw4w9WgXcQ",
+  "comment_text": "Great video!",
+  "comment_published_at": "2026-02-01T08:00:00Z",
+  "comment_published_at__d": { "$date": "2026-02-01T08:00:00Z" },
+  "author_display_name": "John Doe",
+  "author_channel_id": "UCyyyyyy",
+  "like_count": 5,
+  "author_channel_title": null,
+  "author_channel_created_at": null,
+  "author_channel_created_at__d": null,
+  "author_channel_custom_url": null,
+  "enrichment_status": "pending"
+}
+```
+
+#### MongoDB Write — `videos` collection (status update on `video_id`)
+
+```json
+{
+  "comments_status": "success",
+  "comments_fetched": 150,
+  "comments_error": null
+}
+```
+
+#### Lambda Handler Return (invocation output)
+
+```json
+{
+  "ok": true,
+  "stage": "comment",
+  "processed": 5,
+  "comment_results_staged": 5,
+  "comments_upserted": 150,
+  "video_status_updates": 5,
+  "outputs": [
+    {
+      "bucket": "my-bucket",
+      "key": "staging/comments/dQw4w9WgXcQ-<job_id>.json",
+      "s3_uri": "s3://my-bucket/staging/comments/dQw4w9WgXcQ-<job_id>.json",
+      "size_bytes": 8192,
+      "etag": "ghi789"
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+### Pipeline Summary
+
+| Lambda | Invocation Trigger | S3 Input Payload | S3 Output Payload | Handler Return Key Counters |
+| --- | --- | --- | --- | --- |
+| `channel_lambda` | EventBridge schedule | _(none — reads from config)_ | `ChannelStagePayload` | `requested`, `staged`, `mongo_upserts` |
+| `video_lambda` | S3 event (channel stage) | `ChannelStagePayload` | `VideoStagePayload` (one per video) | `processed`, `videos_staged`, `mongo_upserts` |
+| `comment_lambda` | S3 event (video stage) | `VideoStagePayload` | `CommentStagePayload` (one per video) | `processed`, `comment_results_staged`, `comments_upserted`, `video_status_updates` |
+
+All three handlers return `{"ok": false, "stage": "<stage>", "error": "<message>"}` on a fatal setup failure.
+
+---
+
 ## Environment Variables
 
 ### `channel_lambda`
