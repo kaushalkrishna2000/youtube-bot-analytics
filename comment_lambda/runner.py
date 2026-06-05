@@ -45,7 +45,7 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
     # Load project settings from environment variables
     settings = load_settings()
 
-    return Runtime(
+    runtime = Runtime(
         settings=settings,
         event=event,
         # Initialize YouTube API client with project settings
@@ -58,6 +58,15 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
         mongo_writer=MongoWriter(settings),
 
     )
+
+    # Confirm successful cold-start initialisation
+    logger.info(
+        "Runtime initialised youtube_api_key_set=%s mongo_db=%s",
+        bool(settings.youtube_api_key),
+        settings.mongo_db_name,
+    )
+
+    return runtime
 
 
 def resolve_work_items(runtime: Runtime) -> list[dict[str, str]]:

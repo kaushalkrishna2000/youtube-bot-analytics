@@ -45,7 +45,7 @@ class YouTubeClient:
     def call(self, request: Any, delay_ms: int = 0) -> dict[str, Any]:
 
         # Log the intent to execute an API request
-        logger.debug("Executing YouTube API request")
+        logger.info("Executing YouTube API request")
 
         # Track the start time for performance measurement
         start = time.perf_counter()
@@ -54,7 +54,7 @@ class YouTubeClient:
         result: dict[str, Any] = request.execute()
 
         # Log completion details and execution time
-        logger.debug("API call completed in %.0fms (delay_ms=%s)", (time.perf_counter() - start) * 1000, delay_ms)
+        logger.info("API call completed in %.0fms (delay_ms=%s)", (time.perf_counter() - start) * 1000, delay_ms)
 
         # Apply a delay if throttling is requested
         if delay_ms > 0:
