@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from video_job.client.youtube import YouTubeClient
 from video_job.model import VideoDocument
 from video_job.utils.batching import VIDEO_BATCH_SIZE, iter_batches
 from video_job.utils.youtube_items import extract_video_id
+
+logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
@@ -68,7 +72,15 @@ def _get_uploads_playlist_id(client: YouTubeClient, channel_id: str, *, delay_ms
     uploads_playlist_id = items[0].get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads")
 
     # Return the validated playlist ID or None if missing
-    return uploads_playlist_id if isinstance(uploads_playlist_id, str) and uploads_playlist_id else None
+    result = uploads_playlist_id if isinstance(uploads_playlist_id, str) and uploads_playlist_id else None
+
+    # Log whether the uploads playlist was found or missing
+    if not result:
+        logger.info("No uploads playlist found for channel_id=%s", channel_id)
+    else:
+        logger.info("Resolved uploads playlist channel_id=%s playlist_id=%s", channel_id, result)
+
+    return result
 
 
 def _collect_upload_video_ids(
@@ -118,6 +130,12 @@ def _collect_upload_video_ids(
         # Retrieve the token for the next page of playlist items
         next_page_token = response.get("nextPageToken")
 
+        # Log progress after each fetched page
+        logger.info(
+            "Playlist page fetched playlist_id=%s ids_so_far=%s has_next=%s",
+            uploads_playlist_id, len(video_ids), bool(next_page_token),
+        )
+
         # Break the loop if no further pages are available
         if not next_page_token:
             break
@@ -137,8 +155,19 @@ def _hydrate_video_documents(
     # Initialize a list to hold the fully hydrated video documents
     videos: list[VideoDocument] = []
 
+    # Calculate total batches for progress logging
+    total_batches = -(-len(video_ids) // VIDEO_BATCH_SIZE) if video_ids else 0
+    batch_num = 0
+
     # Process video IDs in batches to optimize API usage
     for batch_ids in iter_batches(video_ids, VIDEO_BATCH_SIZE):
+        batch_num += 1
+
+        # Log each batch hydration call
+        logger.info(
+            "Hydrating video batch channel_id=%s batch=%s/%s size=%s",
+            channel_id, batch_num, total_batches, len(batch_ids),
+        )
 
         # Request snippet metadata for all video IDs in the current batch
         request = client.service.videos().list(part="snippet", id=",".join(batch_ids))

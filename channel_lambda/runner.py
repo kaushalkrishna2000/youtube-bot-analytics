@@ -48,7 +48,7 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
     # Generate a stable job identifier from the Lambda context
     job_id = get_job_id(context)
 
-    return Runtime(
+    runtime = Runtime(
         settings=settings,
         job_id=job_id,
         # Initialize YouTube API client with project settings
@@ -61,6 +61,15 @@ def load_runtime(event: dict[str, Any] | None, context: Any) -> Runtime:
         mongo_writer=MongoWriter(settings),
 
     )
+
+    # Confirm successful cold-start initialisation
+    logger.info(
+        "Runtime initialised youtube_api_key_set=%s mongo_db=%s",
+        bool(settings.youtube_api_key),
+        settings.mongo_db_name,
+    )
+
+    return runtime
 
 
 def resolve_work_items(runtime: Runtime) -> list[str]:

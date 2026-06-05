@@ -47,14 +47,22 @@ def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]
     runtime = None
     try:
 
+        # Log the Lambda invocation for CloudWatch traceability
+        logger.info("Lambda invoked function=%s request_id=%s", context.function_name, context.aws_request_id)
+
         # Prepare dependencies and configuration
         runtime = load_runtime(event, context)
 
         # Initialize the result dictionary for tracking progress
         result = build_result(runtime)
 
+        # Resolve work items and log if none are found
+        work_items = resolve_work_items(runtime)
+        if not work_items:
+            logger.info("No work items resolved — nothing to process")
+
         # Loop through each work item identified from the event
-        for channel_input in resolve_work_items(runtime):
+        for channel_input in work_items:
 
             # Execute the core logic for each individual item
             process_work_item(runtime, result, channel_input)

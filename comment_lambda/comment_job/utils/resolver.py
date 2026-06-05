@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from googleapiclient.errors import HttpError
@@ -11,6 +12,8 @@ from comment_job.model import CommentDocument
 from comment_job.utils.batching import CHANNEL_BATCH_SIZE
 from comment_job.utils.comment_parsing import comment_page_size, normalize_author_channel_id
 from comment_job.utils.youtube_errors import is_comments_disabled_error
+
+logger = logging.getLogger(__name__)
 
 
 class CommentsDisabledError(ValueError):
@@ -69,6 +72,7 @@ def fetch_comment_documents(
 
                 # Stop fetching but return the already collected results
                 status = "partial"
+                logger.info("Partial comment fetch video_id=%s comments_collected=%s", video_id, len(comments))
                 break
 
             # Re-raise the error if no comments were successfully fetched
@@ -90,6 +94,12 @@ def fetch_comment_documents(
         # Retrieve the token for the next page of results
         next_page_token = response.get("nextPageToken")
 
+        # Log progress after each fetched page
+        logger.info(
+            "Comment page fetched video_id=%s comments_so_far=%s has_next=%s",
+            video_id, len(comments), bool(next_page_token),
+        )
+
         # Break the loop if no further pages exist or no items were returned
         if not next_page_token or not items:
             break
@@ -99,6 +109,7 @@ def fetch_comment_documents(
 
         # Explicitly indicate that no comments were found
         status = "none"
+        logger.info("No comments returned video_id=%s", video_id)
 
     # Enrich commenter metadata and return the final results
     return _enrich_commenter_channels(client, comments, delay_ms=delay_ms), status
@@ -171,6 +182,13 @@ def _enrich_commenter_channels(
         # Nothing to enrich
         return comments
 
+    # Log enrichment start with batch count
+    num_batches = -(-len(channel_ids) // CHANNEL_BATCH_SIZE)
+    logger.info(
+        "Enriching commenter channels unique_channels=%s batches=%s",
+        len(channel_ids), num_batches,
+    )
+
     # Initialize a map to store fetched author channel metadata
     channel_map: dict[str, dict[str, Any]] = {}
 
@@ -197,6 +215,9 @@ def _enrich_commenter_channels(
 
     # Create a new list for enriched comment documents
     enriched: list[CommentDocument] = []
+    ok_count = 0
+    not_found_count = 0
+    no_channel_count = 0
 
     # Iterate through original comments and apply fetched metadata
     for comment in comments:
@@ -204,6 +225,7 @@ def _enrich_commenter_channels(
         # Skip enrichment if no author channel ID is present
         if not comment.author_channel_id:
             enriched.append(comment.model_copy(update={"enrichment_status": "no_channel"}))
+            no_channel_count += 1
             continue
 
         # Look up the author's snippet in our hydrated map
@@ -212,6 +234,7 @@ def _enrich_commenter_channels(
         # Mark as not found if the channel metadata is missing from the API response
         if not snippet:
             enriched.append(comment.model_copy(update={"enrichment_status": "not_found"}))
+            not_found_count += 1
             continue
 
         # Create an enriched copy of the comment with metadata applied
@@ -225,6 +248,13 @@ def _enrich_commenter_channels(
                 }
             )
         )
+        ok_count += 1
+
+    # Log enrichment outcome breakdown
+    logger.info(
+        "Enrichment complete ok=%s not_found=%s no_channel=%s",
+        ok_count, not_found_count, no_channel_count,
+    )
 
     # Return the collection of enriched comment documents
     return enriched

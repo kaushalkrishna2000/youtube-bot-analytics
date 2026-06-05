@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from channel_job.client.youtube import YouTubeClient
 from channel_job.model import ChannelDocument
 from channel_job.utils.channel_identity import CHANNEL_ID_RE, HANDLE_RE, extract_channel_from_url, parse_int_or_none
+
+logger = logging.getLogger(__name__)
 
 
 class ChannelNotFoundError(ValueError):
@@ -44,6 +48,12 @@ def fetch_channel_document(client: YouTubeClient, channel_input: str, *, delay_m
 
     stats = item.get("statistics", {})
 
+    # Log the fetched channel metadata before returning
+    logger.info(
+        "Fetched channel metadata channel_id=%s title=%s subscribers=%s",
+        channel_id, snippet.get("title"), stats.get("subscriberCount"),
+    )
+
     # Return a validated ChannelDocument populated with metadata
     return ChannelDocument(
         input_raw=channel_input,
@@ -63,6 +73,9 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
 
     if CHANNEL_ID_RE.match(raw):
 
+        # Log that the input is already a canonical channel ID
+        logger.info("Channel input is already a channel_id input=%s", raw)
+
         # Return the input if it is already a canonical channel ID
         return raw
 
@@ -72,13 +85,17 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
     if handle_match:
 
         # Resolve the handle to a channel ID via API lookup
-        return _resolve_by_handle(client, handle_match.group(1), delay_ms=delay_ms)
+        channel_id = _resolve_by_handle(client, handle_match.group(1), delay_ms=delay_ms)
+        logger.info("Resolved handle @%s -> channel_id=%s", handle_match.group(1), channel_id)
+        return channel_id
 
     # Handle cases where @ is provided but not matched by the regex
     if raw.startswith("@"):
 
         # Attempt to resolve the handle without the @ prefix
-        return _resolve_by_handle(client, raw[1:], delay_ms=delay_ms)
+        channel_id = _resolve_by_handle(client, raw[1:], delay_ms=delay_ms)
+        logger.info("Resolved handle @%s -> channel_id=%s", raw[1:], channel_id)
+        return channel_id
 
     # Detect if the input is a YouTube URL
     if "youtube.com" in raw or "youtu.be" in raw:
@@ -96,7 +113,9 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
         if extracted.startswith("@"):
 
             # Resolve the extracted handle to a channel ID
-            return _resolve_by_handle(client, extracted[1:], delay_ms=delay_ms)
+            channel_id = _resolve_by_handle(client, extracted[1:], delay_ms=delay_ms)
+            logger.info("Resolved URL %s -> channel_id=%s", raw, channel_id)
+            return channel_id
 
         # Handle legacy tokens (user or c) extracted from URLs
         if extracted.startswith("legacy:"):
@@ -105,10 +124,15 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
             _, kind, name = extracted.split(":", 2)
 
             # Resolve the legacy path to a canonical channel ID
-            return _resolve_legacy(client, kind, name, delay_ms=delay_ms)
+            channel_id = _resolve_legacy(client, kind, name, delay_ms=delay_ms)
+            logger.info("Resolved legacy /%s/%s -> channel_id=%s", kind, name, channel_id)
+            return channel_id
 
         # Return the extracted token if it matches the channel ID pattern
         if CHANNEL_ID_RE.match(extracted):
+
+            # Log that the URL resolved to a direct channel ID
+            logger.info("Resolved URL %s -> channel_id=%s", raw, extracted)
 
             # Use the extracted channel ID directly
             return extracted
@@ -117,7 +141,9 @@ def resolve_channel_id(client: YouTubeClient, channel_input: str, *, delay_ms: i
         raise ChannelNotFoundError(f"Unrecognized channel URL format: {raw}")
 
     # Fall back to resolving the input as a handle if no other pattern matched
-    return _resolve_by_handle(client, raw, delay_ms=delay_ms)
+    channel_id = _resolve_by_handle(client, raw, delay_ms=delay_ms)
+    logger.info("Resolved handle @%s -> channel_id=%s", raw, channel_id)
+    return channel_id
 
 
 # -----------------------------------------------------------------------------
