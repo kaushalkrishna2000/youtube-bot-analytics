@@ -112,7 +112,7 @@ flowchart TD
 | Env name | Required | Default | Description |
 | --- | --- | --- | --- |
 | `YOUTUBE_API_KEY` | Yes | None | YouTube Data API key. |
-| `YOUTUBE_CHANNELS` | No | `CODE_CHANNELS` | Comma-separated channel handles, IDs, names, or URLs. |
+| `YOUTUBE_CHANNELS` | No | `@ABHIKAREVIEW,@SurajKumarReview,@PJExplained,@BnfTV,@Flickverseyt,@comicverseog,@HombaleFilms,@tseries,@TseriesTelugu,@TseriesTamil,@TseriesMalayalamMusic,UCZRdNleCgW-BGUJf-bbjzQg` | Comma-separated channel handles, IDs, names, or URLs. This is the starting channel set the lambda currently runs with. |
 | `PIPELINE_S3_BUCKET` | Yes | None | Bucket used for channel-stage objects. |
 | `CHANNEL_STAGE_PREFIX` | No | `staging/channels` | Prefix for channel-stage objects. |
 | `STAGING_TTL_DAYS` | No | `2` | Logical TTL added to staged payloads and S3 metadata. |
